@@ -1,0 +1,19 @@
+# Editor and Python-generated files
+/.vscode/
+/__pycache__/
+*.py[cod]
+
+# Current simulation and testing material
+/GROMACS/
+/LAMMPS/
+/md_files/
+/old_files/
+/old_md_data_files/
+/old_python_files/
+/reaction_graph_files/
+
+# Generated trajectory offset indexes
+*.xtc_offsets.npz
+
+# Private development notes
+/dev.md

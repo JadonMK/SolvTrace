@@ -1,0 +1,6 @@
+#COORD_NUM_RESIDUE = NIT     #Residue type (string) or types (list) to find coordination numbers for
+K_LIGAND = NIT             #Residue type (string) or types (list) to find 1st order association constant for (K1 = [R(K1_LIGAND)]/[R][K1_LIGAND])
+K_LIGAND_CONC = 3.0        #Concentration (string) or concentrations (list) of K1_LIGAND (s) in M (mol/liter), if using list: length must match K1_LIGAND
+
+#VIS_SUB_GRAPH_SIZE = [0,1,8,11]
+#VIS_SUB_GRAPH_SIZE = [1,3,6,9]      #Visuallizes a sub graph containing the 'VIS_SUB_GRAPH_SIZE' highest probability nodes in the reaction graph and their connectivity

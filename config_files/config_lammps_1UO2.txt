@@ -1,0 +1,44 @@
+SYSTEM_TYPE = lammps                       #Molecular dynamics simulation type
+DATA_FILE_PATH = md_files/input.data                  #Relative path to data file
+TRJ_FILE_PATH = md_files/1UO2.lammpstrj         #Relative path to trajectory file
+TOPOLOGY_FILE_PATH = None                   #Optional topology file
+DUMP_FREQ = 1000                             #timestep in fs
+FRAMES_TO_PROCESS = [3,8,3]                      #Number of trajectory frames to process, -1 --> process all frames
+
+ATOM_TYPE_LIST=[HW,Li,NO,ON,OU,OW,UO]                         #Ordered atom type list if no atom type are provided, syntax = [atom_type_1_name,atom_type_2_name,...] ex. [HW,Li,OW]
+RESIDUE_LIST = {H2O:[OW,HW,HW],Li:[Li],NIT:[NO,ON,ON,ON],UYL:[UO,OU,OU]}                         #Dictionary mathcing residue types to un-ordered atom type lists, syntax = {residue_type_1:[atom_type_1,atom_type_2,...],...} e.g. {H2O:[OW,HW,HW],Li:[Li],NO3-:[NO,ON,ON,ON]}
+
+REACTANT = UYL                              #Reactant residue type
+REACTION_SHELLS = 2                         #Number of solvation shells to include in reaction graph and extracted clusters
+CLUSTER_MOLECULES = 1000                     #Number of molecules in each neighbor cluster
+PAIR_CUTOFFS = {
+                #Aqueous-Aqueous cutoffs
+                (Li,OW):2.82,(Li,ON):2.87, 
+                (OW,HW):2.43,(UO,OW):3.13,
+                (OU,HW):3.00,(ON,HW):2.49,
+                (UO,ON):2.88,
+                }   #Atom-atom pair cutoffs to use in determing coordination in angstroms, syntax = {(atom_type_x,atom_type_y):cutoff,... or ((atom_type_x,atom_type_y,...),atom_type_z):cutoff,... or ((atom_type_x,atom_type_y,...),(atom_type_i,atom_type_j,...)):cutoff,...}  NOTE: Does not need to include all atom pairs.
+
+CREATE_RXN_GRAPH = True
+WRITE_DIRECTORY = 2NIT                   #Master directory for all sub-runs
+RUN_NAME = _2NIT                          #Sub-directory for analysis and extraction output
+OUTPUT_TYPE = XYZ                           #File type to write extracted clusters to, options: 'XYZ'- generic structure file, 'QCHEM'- QCHEM compatable input file, 'GRO'- gromacs structure file, for multiple file outputs seperate keywords with '_' e.g., 'GRO_XYZ' 
+CLUSTERS_TO_EXTRACT = 1000                     #Number of clusters to write to file from data file or trajectory (seperate)
+REACTANT_TO_PRINT = [{},{NIT:2}]      #Reactant solvation shell composition to extract, syntax = [{shell_1_residue:shell_1_residue_number,...},{shell_2_residue:shell_2_residue_number,...},...] ex. [{H2O:4,NIT:1},{H2O:12,NIT:1}]
+CONSERVE_COORDINATION = {UYL:{H2O:36}, NIT:none}              #Residue(s) and number(s) to conserve for each specie, syntax = {specie_residue_1:{conserved_residue_1:conserved_residue_number_1,...},...} ex. {UYL:{H2O:30},NIT:None,TBP:None}
+COARSEN_SOLVENT_RESIDUES = [H2O]                                    #Residues to corsen when building reaction graph. Will not trace coordination changes from these species, instead storing a range 
+EXCLUDE_SOLVENT_RESIDUES = None
+
+HBOND_TARGET = None#37.25
+HBOND_DEV = None#1
+SPECTATOR_TARGET = None#{Li:1.2,NIT:3.2}
+SPECTATOR_DEV = None#{Li:1,NIT:1}
+
+RESIDUE_DIELECTRICS = {H2O:78.4,NIT:78.4,UYL:78.4,Li:78.4}             #Residue specific dielectric constants, syntax = {residue_type_1:dielectric,...} e.g. {H2O:78.4,HEXA:4,NIT:78.4}
+RESIDUE_CHARGES = {H2O:0,UYL:2,NIT:-1,Li:1}                            #Residue specific charges, syntax = {residue_type_1:charge,...} e.g. {H2O:0,HEXA:0,NIT:-1}
+
+QC_BASIS = def2-SVPD          #Basis set to use in QCHEM calculation, may be either a single string for a global basis set or a complete dictionary containing atom_type:basis_set key value pairs when using different basis sets for different atom types, NOTE: The basis set for each atom type in 'QC_PSEUDO' which utilizes a pseudopotential will be replaced by its associated basis set unless this keyword is a complete dictionary, syntax- 'basis_set_keyword' or {atom_type1:basis_set_keyword,atom_type2:basis_set_keyword,...}
+QC_BASIS2 = def2-SVP        #Auxilary basis set to use for QCHEM calculation SCF speed-up, may be either a single string for a global aux basis set or a complete dictionary containing atom_type:aux_basis_set key value pairs when using different aux basis sets for different atom types, NOTE: The aux basis set for each atom type in 'QC_PSEUDO' which utilizes a pseudopotential will be replaced by its associated basis set unless this keyword is a complete dictionary, syntax- 'aux_basis_set_keyword' or {atom_type1:aux_basis_set_keyword,atom_type2:aux_basis_set_keyword,...}
+QC_PSEUDO = {UO:SRSC}          #Atom type pseudopotential(s) to use in QCHEM calculation, must be a dictionary containing atom_type:pseudopotential key value pairs, does not have to be complete, NOTE: The basis set for each atom type in 'QC_PSEUDO' which utilizes a pseudopotential will be replaced by its associated basis set unless 'QC_BASIS' is complete, syntax- {atom_type1:pseudopotential_keyword,atom_type2:pseudopotential_keyword,...}
+QC_METHOD = wB97X-D3              #Method used to solve the schrodinger equation in QCHEM calculation e.g. HF, B3LYP, etc.
+QC_PCM_METHOD = CPCM            #Polarizable Continuum Model to use in QCHEM calculation
