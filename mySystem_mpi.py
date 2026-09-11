@@ -9,7 +9,7 @@ class system():
     
     def __init__(self,config:"configuration"):
 
-        self.RUN_CONFIG = config
+        self.CONFIG = config
 
         tracemalloc.start()
 
@@ -21,7 +21,7 @@ class system():
         self.PEAK_MEMORY_USE = None #Peak memory use (of all processes) in GB (only updated on root)
 
         if self.RANK == 0:
-            print('Creating system...',flush=True)
+            self.CONFIG.STDOUT.write('Creating system...\n')
 
         self.DATA_FILE = None
         self.TRJ_FILE = None
@@ -121,14 +121,14 @@ class system():
         self.FRAME_STRIDE = 1
 
         #Reaction graph object (see rxnGraph class)
-        self.GRAPH = rxnGraph(self.RUN_CONFIG)
+        self.GRAPH = rxnGraph(self.CONFIG)
         self.GRAPH2 = None #For secondary graphs when reading user reaction graph files
-        self.ALL_RANKS_GRAPH = rxnGraph(self.RUN_CONFIG)
+        self.ALL_RANKS_GRAPH = rxnGraph(self.CONFIG)
         self.REACTANT_TO_PRINT = None
 
         #Extraction statistical variables
-        self.RANK_CLUSTERS_TO_EXTRACT = self.RUN_CONFIG.config['CLUSTERS_TO_EXTRACT']
-        self.TOTAL_CLUSTERS_TO_EXTRACT = self.RUN_CONFIG.config['CLUSTERS_TO_EXTRACT']
+        self.RANK_CLUSTERS_TO_EXTRACT = self.CONFIG.config['CLUSTERS_TO_EXTRACT']
+        self.TOTAL_CLUSTERS_TO_EXTRACT = self.CONFIG.config['CLUSTERS_TO_EXTRACT']
         self.RANK_CLUSTERS_WRITTEN = 0
         self.TOTAL_CLUSTERS_WRITTEN = 0
         self.REACTANTS_TO_WRITE_FOUND = 0
@@ -163,8 +163,8 @@ class system():
             'WRITE_FAILED_UNDER_HBOND_COUNT':0,
             'TOTAL_WRITE_FAILED_UNDER_HBOND_COUNT':0}
 
-        # self.extractCoordOut = open(f"./{self.RUN_CONFIG.config['WRITE_DIRECTORY']}/{self.RUN_CONFIG.config['RUN_NAME']}/rank_{self.RANK}_coord.txt",'w')
-        # self.failedExtractCoordOut = open(f"./{self.RUN_CONFIG.config['WRITE_DIRECTORY']}/{self.RUN_CONFIG.config['RUN_NAME']}/rank_{self.RANK}_failed_coord.txt",'w')
+        # self.extractCoordOut = open(f"./{self.CONFIG.config['WRITE_DIRECTORY']}/{self.CONFIG.config['RUN_NAME']}/rank_{self.RANK}_coord.txt",'w')
+        # self.failedExtractCoordOut = open(f"./{self.CONFIG.config['WRITE_DIRECTORY']}/{self.CONFIG.config['RUN_NAME']}/rank_{self.RANK}_failed_coord.txt",'w')
 
         #Writing timestep information fix
         self.EXTRACTION_TIMESTEP = 20000 #timestep for writing clusters in femtoseconds
@@ -180,13 +180,13 @@ class system():
     class molecule():
         def __init__(self, configuration:"configuration", atom_indexes=None, index:int=-1):
             
-            self.RUN_CONFIG = configuration
+            self.CONFIG = configuration
             self.index = index
             self.atoms = [] #indexes of atoms in molecule
             self.residue = None #Molecule type
 
             self.cluster = None #Molecular cluster formed around molecule
-            self.coordination = [{} for shell in range(self.RUN_CONFIG.config['REACTION_SHELLS'])]
+            self.coordination = [{} for shell in range(self.CONFIG.config['REACTION_SHELLS'])]
             self.solvation_shells = [] #Data structure describing solvation: [[firstshell],[secondshell],...]
             self.total_shells = None
             self.extract_shells = None #Subset of solvation_shells, the portion of the solvation shells which may be extracted
@@ -238,7 +238,7 @@ class system():
             elif isinstance(new_contents,np.int32):
                 self.solvation_shells[shell_index].add(new_contents)
                 return
-            raise mySystemError('molecule.updateSolvationShells cannot take non-set or integer argument.')
+            raise mySystemError('molecule.updateSolvationShells cannot take non-set or integer argument')
 
         def resetSolvationShells(self):
             for shell in self.solvation_shells:
@@ -276,7 +276,7 @@ class system():
         
             self.atom_type_masks = {}
             cluster_atom_types = ATOM_TYPES[self.cluster_atoms]
-            for a_type in self.RUN_CONFIG.config['ATOM_TYPE_LIST']:
+            for a_type in self.CONFIG.config['ATOM_TYPE_LIST']:
                 self.atom_type_masks[a_type] = (cluster_atom_types == a_type)
 
         def createRemainingMolMask(self):
@@ -288,13 +288,13 @@ class system():
     #System class methods:
 
     def checkConfiguration(self,parameter_name,optional_temp_param=None):
-        PARAMETER = self.RUN_CONFIG.config[parameter_name]
-        SYNTAX = self.RUN_CONFIG.syntax[parameter_name]
+        PARAMETER = self.CONFIG.config[parameter_name]
+        SYNTAX = self.CONFIG.syntax[parameter_name]
 
         match parameter_name:
             case 'SYSTEM_TYPE':
                 if PARAMETER is None:
-                    raise mySystemError(f"{parameter_name} is None.")
+                    raise mySystemError(f"{parameter_name} is None")
                 if PARAMETER != 'gromacs' and PARAMETER != 'lammps':
                     raise configurationError(f"Invalid input for '{parameter_name}': {PARAMETER}")
             case 'DATA_FILE_PATH':
@@ -316,56 +316,56 @@ class system():
                     return #Topology file is optional, return False
             case 'DUMP_FREQ':
                 if PARAMETER is None:
-                    raise mySystemError(f"{parameter_name} is None.")
+                    raise mySystemError(f"{parameter_name} is None")
                 if PARAMETER <= 0:
-                    raise configurationError(f"'{parameter_name}' outside valid range, should be > 0.")
+                    raise configurationError(f"'{parameter_name}' outside valid range, should be > 0")
             case 'FRAMES_TO_PROCESS':
                 if PARAMETER is None:
-                    raise mySystemError(f"'{parameter_name}' missing.")
+                    raise mySystemError(f"'{parameter_name}' missing")
                 if isinstance(PARAMETER,int):
-                    self.RUN_CONFIG.config[parameter_name] = (PARAMETER,)
-                    PARAMETER = self.RUN_CONFIG.config[parameter_name]
+                    self.CONFIG.config[parameter_name] = (PARAMETER,)
+                    PARAMETER = self.CONFIG.config[parameter_name]
                 if isinstance(PARAMETER,list):
-                    self.RUN_CONFIG.config[parameter_name] = tuple(PARAMETER)
-                    PARAMETER = self.RUN_CONFIG.config[parameter_name]
+                    self.CONFIG.config[parameter_name] = tuple(PARAMETER)
+                    PARAMETER = self.CONFIG.config[parameter_name]
                 for slice_arg in PARAMETER:
                     if not isinstance(slice_arg,int):
-                        raise mySystemError(f"Non-integer slicing argument provided for '{parameter_name}'.")
+                        raise mySystemError(f"Non-integer slicing argument provided for '{parameter_name}'")
                 if len(PARAMETER) == 1:
                     if PARAMETER[0] < 0 and PARAMETER[0] != -1:
-                        raise configurationError(f"Invalid '{parameter_name}', requested frame processing limit must be integer > 0 or -1 for all frames.")
+                        raise configurationError(f"Invalid '{parameter_name}', requested frame processing limit must be integer > 0 or -1 for all frames")
                     self.STOP_FRAME = PARAMETER[0]
                     return
                 if len(PARAMETER) > 3:
-                    raise mySystemError(f"Too many arguments for '{parameter_name}' slice. Syntax: {SYNTAX}.")
+                    raise mySystemError(f"Too many arguments for '{parameter_name}' slice. Syntax: {SYNTAX}")
                 if PARAMETER[0] > PARAMETER[1]:
-                    raise mySystemError(f"Invalid slice for '{parameter_name}': start index exceeds stop index. Syntax: {SYNTAX}.")
+                    raise mySystemError(f"Invalid slice for '{parameter_name}': start index exceeds stop index. Syntax: {SYNTAX}")
                 
                 self.START_FRAME = PARAMETER[0]
                 self.STOP_FRAME = PARAMETER[1]
                 if len(PARAMETER) > 2:
                     if PARAMETER[2] < 1:
-                        raise mySystemError(f"Invalid slice for '{parameter_name}': invalid stride. Syntax: {SYNTAX}.")
+                        raise mySystemError(f"Invalid slice for '{parameter_name}': invalid stride. Syntax: {SYNTAX}")
                     self.FRAME_STRIDE = PARAMETER[2]
             case 'ATOM_TYPE_LIST':
                 if self.NUM_ATOM_TYPES is None:
-                    raise configurationError('Number of atom types is ambiguous.')
+                    raise configurationError('Number of atom types is ambiguous')
                 if PARAMETER is None and optional_temp_param is None:
-                    raise configurationError(f"'Atom types could not be parsed from the file and no {parameter_name} was provided.")
+                    raise configurationError(f"'Atom types could not be parsed from the file and no {parameter_name} was provided")
                 if PARAMETER is not None:
                     if len(PARAMETER) != self.NUM_ATOM_TYPES:
-                        raise configurationError(f"'{parameter_name}' ({PARAMETER}) length does not match atom type number parsed from file.")
+                        raise configurationError(f"'{parameter_name}' ({PARAMETER}) length does not match atom type number parsed from file")
                     if self.RANK == 0:
-                        print(f"'{parameter_name}' accepted",flush=True)
+                        self.CONFIG.STDOUT.write(f"'{parameter_name}' accepted\n")
                 if optional_temp_param is not None:
                     if PARAMETER is not None:
                         if optional_temp_param == PARAMETER:
                             if self.RANK == 0:
-                                print(f"WARNING: redundant '{parameter_name}' provided, this parameter is option for this run style.",flush=True)
+                                self.CONFIG.STDOUT.write(f"WARNING: redundant '{parameter_name}' provided, this parameter is option for this run style.\n")
                         else:
-                            raise configurationError(f"Optional '{parameter_name}' provided for GROMACS type system does not match that parsed from data file.")
+                            raise configurationError(f"Optional '{parameter_name}' provided for GROMACS type system does not match that parsed from data file")
                     else:
-                        self.RUN_CONFIG.config[parameter_name] = optional_temp_param
+                        self.CONFIG.config[parameter_name] = optional_temp_param
 
                 if all([isinstance(self.ATOMTYPES[0],int) for _ in self.ATOMTYPES]): #Check that an all strings atom type list exists
                     for i in range(len(self.ATOMTYPES)):
@@ -374,23 +374,23 @@ class system():
                             if self.ATOMTYPES[i] == j+1:
                                 self.ATOMTYPES[i] = type
                 elif not all([isinstance(self.ATOMTYPES[0],str) for _ in self.ATOMTYPES]):
-                    raise configurationError('Could not parse atom types from data file.')
+                    raise configurationError('Could not parse atom types from data file')
 
                 if not isinstance(self.ATOMTYPES, np.ndarray):
                     self.ATOMTYPES = np.array(self.ATOMTYPES)
             case 'RESIDUE_LIST':
                 if PARAMETER is None and optional_temp_param is None:
-                    raise configurationError(f"'Residue types could not be parsed from data file and no {parameter_name} was provided.")
+                    raise configurationError(f"'Residue types could not be parsed from data file and no {parameter_name} was provided")
                 if PARAMETER is not None:
                     if optional_temp_param is not None and optional_temp_param == PARAMETER:
                         if self.RANK == 0:
-                            print(f"WARNING: redundant '{parameter_name}' provided, this parameter is option for this run style.",flush=True)
+                            self.CONFIG.STDOUT.write(f"WARNING: redundant '{parameter_name}' provided, this parameter is option for this run style.\n")
                     else:
                         residue_atomtype_lists_sorted = []
                         for residue,atom_type_list in PARAMETER.items():
                             #Check for list validity
                             if not isinstance(atom_type_list,list):
-                                raise configurationError(f"Invalid atom list given in '{parameter_name}' for residue {residue}. Syntax is {SYNTAX}.")
+                                raise configurationError(f"Invalid atom list given in '{parameter_name}' for residue {residue}. Syntax is {SYNTAX}")
                             sorted_entry = sorted(atom_type_list)
                             #Check for redundant entries
                             if sorted_entry in residue_atomtype_lists_sorted:
@@ -398,47 +398,47 @@ class system():
                             residue_atomtype_lists_sorted.append(sorted_entry)
                             #Check for atom_type validity
                             # for atom_type in atom_type_list:
-                            #     if atom_type not in self.RUN_CONFIG.config['ATOM_TYPE_LIST']: #Check if all entries and atom types within entries are good
+                            #     if atom_type not in self.CONFIG.config['ATOM_TYPE_LIST']: #Check if all entries and atom types within entries are good
                             #         raise configurationError(f"Invalid atom type '{atom_type}'")
                             #Check that for each residue definiton there is >=1 matching molecule
                             if self.MOLECULES is None:
-                                raise configurationError(f"No molecules present at time of {parameter_name} validation.")
+                                raise configurationError(f"No molecules present at time of {parameter_name} validation")
                             mol_present = False
                             for molecule in self.MOLECULES:
                                 if sorted(self.ATOMTYPES[molecule.atoms]) == sorted_entry:
                                     mol_present = True
                             if not mol_present:
                                 if self.RANK == 0:
-                                    print(f"WARNING: '{parameter_name}' - '{residue}' is not used.",flush=True)
+                                    self.CONFIG.STDOUT.write(f"WARNING: '{parameter_name}' - '{residue}' is not used.\n")
                         #Check that for each molecule there is 1 residue type to describe its atoms
                         for molecule in self.MOLECULES:
                             if sorted(self.ATOMTYPES[molecule.atoms]) not in residue_atomtype_lists_sorted:
-                                raise configurationError(f"'{parameter_name}' is incomplete as provided, missing definition for {self.ATOMTYPES[molecule.atoms]}.")
+                                raise configurationError(f"'{parameter_name}' is incomplete as provided, missing definition for {self.ATOMTYPES[molecule.atoms]}")
                     if self.RANK == 0:
-                        print(f"'{parameter_name}' accepted",flush=True)
+                        self.CONFIG.STDOUT.write(f"'{parameter_name}' accepted\n")
                 if optional_temp_param is not None and PARAMETER is None:
-                    self.RUN_CONFIG.config[parameter_name] = optional_temp_param
+                    self.CONFIG.config[parameter_name] = optional_temp_param
             case 'REACTANT':
                 if PARAMETER is None:
-                    raise mySystemError(f"{parameter_name} is None.")
-                if PARAMETER not in self.RUN_CONFIG.config['RESIDUE_LIST']:
+                    raise mySystemError(f"{parameter_name} is None")
+                if PARAMETER not in self.CONFIG.config['RESIDUE_LIST']:
                     raise configurationError('Invalid reactant residue type provided')
             case 'REACTION_SHELLS':
                 if PARAMETER is None:
-                    raise mySystemError(f"{parameter_name} is None.")
+                    raise mySystemError(f"{parameter_name} is None")
                 if PARAMETER < 1:
-                    raise configurationError(f"'{parameter_name}' outside valid range, should be > 0.")
+                    raise configurationError(f"'{parameter_name}' outside valid range, should be > 0")
             case 'CLUSTER_MOLECULES':
                 if PARAMETER is None:
-                    raise mySystemError(f"{parameter_name} is None.")
+                    raise mySystemError(f"{parameter_name} is None")
                 if PARAMETER < 1:
-                    raise configurationError(f"'{parameter_name}' outside valid range, should be > 0.")
+                    raise configurationError(f"'{parameter_name}' outside valid range, should be > 0")
             case 'PAIR_CUTOFFS':
                 def strInAtomTypeList(string):
-                    if string not in self.RUN_CONFIG.config['ATOM_TYPE_LIST']:
-                        raise configurationError(f"Encountered '{parameter_name}' atom name,{string}, not in 'ATOM_TYPE_LIST'.")
+                    if string not in self.CONFIG.config['ATOM_TYPE_LIST']:
+                        raise configurationError(f"Encountered '{parameter_name}' atom name,{string}, not in 'ATOM_TYPE_LIST'")
                 if not PARAMETER:
-                    raise configurationError(f"Empty {parameter_name} provided.")
+                    raise configurationError(f"Empty {parameter_name} provided")
                 for key,cutoff in PARAMETER.items():
                     #Check if key is a atom pair tuple
                     if not isinstance(key,tuple):
@@ -460,13 +460,13 @@ class system():
                         else:
                             raise configurationError(f"Non-string/tuple atom name(s) encounterd in '{parameter_name}' tuple: {pair}, syntax is {SYNTAX}")
                 
-                #Create atom-type specific list of relevent target atom types from self.RUN_CONFIG.config['PAIR_CUTOFFS']
+                #Create atom-type specific list of relevent target atom types from self.CONFIG.config['PAIR_CUTOFFS']
                 self.completeCutOffList()
-                PARAMETER = self.RUN_CONFIG.config[parameter_name] #Reassign the PARAMETER variable, as completeCutOffList() alters self.RUN_CONFIG.config['PAIR_CUTOFFS']
+                PARAMETER = self.CONFIG.config[parameter_name] #Reassign the PARAMETER variable, as completeCutOffList() alters self.CONFIG.config['PAIR_CUTOFFS']
 
                 #Check if there is at least 1 atom type cutoff between each residue pair
-                residue_items = list(self.RUN_CONFIG.config['RESIDUE_LIST'].items())
-                res_num = len(self.RUN_CONFIG.config['RESIDUE_LIST'].items())
+                residue_items = list(self.CONFIG.config['RESIDUE_LIST'].items())
+                res_num = len(self.CONFIG.config['RESIDUE_LIST'].items())
                 for residue_index1 in range(res_num):
                     residue1,atom_type_list1 = residue_items[residue_index1]
                     for residue_index2 in range(residue_index1+1,res_num):
@@ -481,24 +481,24 @@ class system():
                                 break
                         if not pair_found:
                             if self.RANK == 0:
-                                print(f"WARNING: atom pair interaction cutoff not found between residues '{residue1}' and '{residue2}'",flush=True)
+                                self.CONFIG.STDOUT.write(f"WARNING: atom pair interaction cutoff not found between residues '{residue1}' and '{residue2}'\n")
             case 'CREATE_RXN_GRAPH':
                 if PARAMETER is None:
-                    self.RUN_CONFIG.config[parameter_name] = False
+                    self.CONFIG.config[parameter_name] = False
             case 'WRITE_DIRECTORY':
                 if PARAMETER is None:
-                    raise mySystemError(f"{parameter_name} is None.")
+                    raise mySystemError(f"{parameter_name} is None")
                 if PARAMETER == '':
-                    raise mySystemError(f"Empty {parameter_name} given.")
+                    raise mySystemError(f"Empty {parameter_name} given")
             case 'RUN_NAME':
                 if PARAMETER is None:
-                    raise mySystemError(f"{parameter_name} is None.")
+                    raise mySystemError(f"{parameter_name} is None")
                 if PARAMETER == '':
-                    raise mySystemError(f"Empty {parameter_name} given.")
+                    raise mySystemError(f"Empty {parameter_name} given")
             case 'OUTPUT_TYPE':
                 if PARAMETER is None:
-                    if self.RUN_CONFIG.config['CLUSTERS_TO_EXTRACT'] == -1 or self.RUN_CONFIG.config['CLUSTERS_TO_EXTRACT'] > 0:
-                        raise configurationError(f"No '{parameter_name}' style provided to extract clusters to.")
+                    if self.CONFIG.config['CLUSTERS_TO_EXTRACT'] == -1 or self.CONFIG.config['CLUSTERS_TO_EXTRACT'] > 0:
+                        raise configurationError(f"No '{parameter_name}' style provided to extract clusters to")
                     return
                 check_param = PARAMETER
                 check_param = check_param.replace('_','')
@@ -510,172 +510,172 @@ class system():
                     raise configurationError(f"Invalid input for '{parameter_name}': {PARAMETER}")
             case 'CLUSTERS_TO_EXTRACT':
                 if PARAMETER is None:
-                    self.RUN_CONFIG.config[parameter_name] = 0
+                    self.CONFIG.config[parameter_name] = 0
                 if PARAMETER < -1:
                     raise configurationError(f"'{parameter_name}' outside valid range")
             case 'REACTANT_TO_PRINT':
                 if PARAMETER is None or PARAMETER == []:
-                    if self.RUN_CONFIG.config['CLUSTERS_TO_EXTRACT'] == -1 or self.RUN_CONFIG.config['CLUSTERS_TO_EXTRACT'] > 0:
+                    if self.CONFIG.config['CLUSTERS_TO_EXTRACT'] == -1 or self.CONFIG.config['CLUSTERS_TO_EXTRACT'] > 0:
                         if self.RANK == 0:
-                            print('WARNING: No reactant state to extract defined, no clusters will be extracted',flush=True)
-                        self.RUN_CONFIG.config['CLUSTERS_TO_EXTRACT'] = 0
+                            self.CONFIG.STDOUT.write('WARNING: No reactant state to extract defined, no clusters will be extracted\n')
+                        self.CONFIG.config['CLUSTERS_TO_EXTRACT'] = 0
                     return
                 if self.rankClustersExtracted():
-                    self.RUN_CONFIG.config[parameter_name] = None
+                    self.CONFIG.config[parameter_name] = None
                     return
-                if len(PARAMETER) > self.RUN_CONFIG.config['REACTION_SHELLS']:
-                    raise configurationError(f"Shell number in '{parameter_name}' exceeds the requested reactant shell number.")
-                for _ in range(self.RUN_CONFIG.config['REACTION_SHELLS']-len(PARAMETER)):
+                if len(PARAMETER) > self.CONFIG.config['REACTION_SHELLS']:
+                    raise configurationError(f"Shell number in '{parameter_name}' exceeds the requested reactant shell number")
+                for _ in range(self.CONFIG.config['REACTION_SHELLS']-len(PARAMETER)):
                     PARAMETER.append({})
                 for shell in PARAMETER:
                     if not isinstance(shell,dict):
                         raise configurationError(f"Non-dictionary shell content provided in '{parameter_name}': '{shell}', syntax is {SYNTAX}")
                     for residue,num in shell.items():
-                        if residue not in self.RUN_CONFIG.config['RESIDUE_LIST']:
+                        if residue not in self.CONFIG.config['RESIDUE_LIST']:
                             raise configurationError(f"Invalid residue encountered in '{parameter_name}': {residue}")
-                        if self.RUN_CONFIG.config['EXCLUDE_SOLVENT_RESIDUES'] is not None and residue in self.RUN_CONFIG.config['EXCLUDE_SOLVENT_RESIDUES']:
-                            raise mySystemError(f"Invalid residue in '{parameter_name}', cannot contain residues excluded using 'EXCLUDE_SOLVENT_RESIDUES'.")
+                        if self.CONFIG.config['EXCLUDE_SOLVENT_RESIDUES'] is not None and residue in self.CONFIG.config['EXCLUDE_SOLVENT_RESIDUES']:
+                            raise mySystemError(f"Invalid residue in '{parameter_name}', cannot contain residues excluded using 'EXCLUDE_SOLVENT_RESIDUES'")
                         if num < 0:
                             raise configurationError(f"Invalid residue number requested in {parameter_name} for '{residue}': {num}")
-                if not self.RUN_CONFIG.configExists('CONSERVE_COORDINATION'):
-                    for residue in self.RUN_CONFIG.config['RESIDUE_LIST']:
+                if not self.CONFIG.configExists('CONSERVE_COORDINATION'):
+                    for residue in self.CONFIG.config['RESIDUE_LIST']:
                         shell.setdefault(residue,0)
-                self.REACTANT_TO_PRINT = self.GRAPH.rxnNode(configuration=self.RUN_CONFIG,solvation_shells=self.RUN_CONFIG.config['REACTANT_TO_PRINT'])
+                self.REACTANT_TO_PRINT = self.GRAPH.rxnNode(configuration=self.CONFIG,solvation_shells=self.CONFIG.config['REACTANT_TO_PRINT'])
                 #if self.RANK == 0:
-                    #print(f"REACTANT TO PRINT: {self.REACTANT_TO_PRINT}",flush=True)
+                    #self.CONFIG.STDOUT.write(f"REACTANT TO PRINT: {self.REACTANT_TO_PRINT}\n")
             case 'CONSERVE_COORDINATION':
                 if PARAMETER is None or PARAMETER == {}:
                     return
                 all_none = True
                 for residue,conserve_dict in PARAMETER.items():
-                    if residue not in self.RUN_CONFIG.config['RESIDUE_LIST']:
+                    if residue not in self.CONFIG.config['RESIDUE_LIST']:
                         raise configurationError(f"Invalid residue encountered in '{parameter_name}': {residue}")
                     if conserve_dict is None:
                         continue
                     all_none = False
                     if not isinstance(conserve_dict,dict):
-                        raise configurationError(f"Non-dictionary '{parameter_name}' parameter encountered for '{residue}': '{conserve_dict}'.")
+                        raise configurationError(f"Non-dictionary '{parameter_name}' parameter encountered for '{residue}': '{conserve_dict}'")
                     for conserve_residue,number in conserve_dict.items():
                         if number < 0:
                             raise configurationError(f"Invalid conserved residue number encountered in '{parameter_name}' for '{residue}': '{number}'")
-                        if conserve_residue not in self.RUN_CONFIG.config['COARSEN_SOLVENT_RESIDUES']:
+                        if conserve_residue not in self.CONFIG.config['COARSEN_SOLVENT_RESIDUES']:
                             raise configurationError(f"Non-'COARSEN_SOLVENT_RESIDUES' conserved residue encountered in '{parameter_name}' for '{residue}': '{conserve_residue}'")
                 if all_none:
-                    print("WARNING: 'CONSERVE_COORDINATION' contains no coodination conservation instructions.")
-                    self.RUN_CONFIG.config[parameter_name] = None
+                    self.CONFIG.STDOUT.write("WARNING: 'CONSERVE_COORDINATION' contains no coodination conservation instructions.\n")
+                    self.CONFIG.config[parameter_name] = None
             case 'COARSEN_SOLVENT_RESIDUES':
                 if PARAMETER is None or PARAMETER == []:
                     return
                 for residue in PARAMETER:
-                    if residue not in self.RUN_CONFIG.config['RESIDUE_LIST']:
+                    if residue not in self.CONFIG.config['RESIDUE_LIST']:
                         raise configurationError(f"Invalid residue encountered in '{parameter_name}': {residue}")
             case 'EXCLUDE_SOLVENT_RESIDUES':
                 if PARAMETER is None or PARAMETER == []:
                     return
-                if self.RUN_CONFIG.configExists('CONSERVE_COORDINATION'):
-                    print(f"WARNING: '{parameter_name}' cannot be used with 'CONSERVE_COORDINATION', clearing. To exclude specific solvent types, ensure these types do not appear in 'CONSERVE_COORDINATION'.")
-                    self.RUN_CONFIG.config[parameter_name] = None
+                if self.CONFIG.configExists('CONSERVE_COORDINATION'):
+                    self.CONFIG.STDOUT.write(f"WARNING: '{parameter_name}' cannot be used with 'CONSERVE_COORDINATION', clearing. To exclude specific solvent types, ensure these types do not appear in 'CONSERVE_COORDINATION'.\n")
+                    self.CONFIG.config[parameter_name] = None
                     return
                 for residue in PARAMETER:
-                    if residue not in self.RUN_CONFIG.config['RESIDUE_LIST']:
+                    if residue not in self.CONFIG.config['RESIDUE_LIST']:
                         raise configurationError(f"Invalid residue encountered in '{parameter_name}': {residue}")
                 set_exclude = set(PARAMETER)
-                set_coarsen = set(self.RUN_CONFIG.config['COARSEN_SOLVENT_RESIDUES']) if self.RUN_CONFIG.config['COARSEN_SOLVENT_RESIDUES'] is not None else set()
+                set_coarsen = set(self.CONFIG.config['COARSEN_SOLVENT_RESIDUES']) if self.CONFIG.config['COARSEN_SOLVENT_RESIDUES'] is not None else set()
                 if not (set_exclude < set_coarsen):
-                    self.RUN_CONFIG.config[parameter_name] = list(set_exclude & set_coarsen)
+                    self.CONFIG.config[parameter_name] = list(set_exclude & set_coarsen)
                     raise mySystemError(f"WARNING: Some excluded residues in {parameter_name} are not contained within 'COARSEN_SOLVENT_RESIDUES'. Correcting...")
-                self.RUN_CONFIG.config[parameter_name] = list(set_exclude)
+                self.CONFIG.config[parameter_name] = list(set_exclude)
             case 'FILTER_REACTANTS_BY_Z':
                 if PARAMETER is None:
                     return
                 if isinstance(PARAMETER, tuple):
                     PARAMETER = list(PARAMETER)
-                    self.RUN_CONFIG.config[parameter_name]
+                    self.CONFIG.config[parameter_name]
                 if len(PARAMETER) % 2 == 1:
-                    raise mySystemError(f"'{parameter_name}' does not include even number of bounds.")
+                    raise mySystemError(f"'{parameter_name}' does not include even number of bounds")
                 for index in range(len(PARAMETER)-2):
                     if PARAMETER[index] > PARAMETER[index+1]:
-                        raise mySystemError(f"'{parameter_name}' bounds are out of order, syntax is: {self.RUN_CONFIG.syntax[parameter_name]}.")
+                        raise mySystemError(f"'{parameter_name}' bounds are out of order, syntax is: {self.CONFIG.syntax[parameter_name]}")
                 if len(PARAMETER) > 2:
                     paired_list = []
                     for index in range(0,len(PARAMETER),2):
                         paired_list.append((PARAMETER[index],PARAMETER[index+1]))
                     PARAMETER = paired_list
-                    self.RUN_CONFIG.config[parameter_name] = PARAMETER
+                    self.CONFIG.config[parameter_name] = PARAMETER
             case 'HBOND_TARGET':
                 if PARAMETER is None:
                     return
                 if PARAMETER <= 0:
                     raise configurationError(f"'{parameter_name}' outside valid range")
             case 'HBOND_DEV':
-                if PARAMETER is None and self.RUN_CONFIG.config['HBOND_TARGET'] is None:
+                if PARAMETER is None and self.CONFIG.config['HBOND_TARGET'] is None:
                     return
                 if PARAMETER == None:
-                    self.RUN_CONFIG.config[parameter_name] = 0
-                    PARAMETER = self.RUN_CONFIG.config[parameter_name]
+                    self.CONFIG.config[parameter_name] = 0
+                    PARAMETER = self.CONFIG.config[parameter_name]
                 else:
                     if PARAMETER <= 0:
-                        raise configurationError(f"'{parameter_name}' outside valid range.")
-                    if self.RUN_CONFIG.config['HBOND_TARGET'] <= PARAMETER:
-                        raise configurationError(f"'HBOND_TARGET' and '{parameter_name}' provided produce invalid H-Bond range.")
+                        raise configurationError(f"'{parameter_name}' outside valid range")
+                    if self.CONFIG.config['HBOND_TARGET'] <= PARAMETER:
+                        raise configurationError(f"'HBOND_TARGET' and '{parameter_name}' provided produce invalid H-Bond range")
             case 'SPECTATOR_TARGET':
                 if PARAMETER is None:
                     return
-                if (PARAMETER.keys() - self.RUN_CONFIG.config['RESIDUE_LIST'].keys()):
-                    raise configurationError(f"'{parameter_name}' contains invalid residues: {', '.join([invalid_key for invalid_key in (PARAMETER.keys() - self.RUN_CONFIG.config['RESIDUE_LIST'].keys())])}")
+                if (PARAMETER.keys() - self.CONFIG.config['RESIDUE_LIST'].keys()):
+                    raise configurationError(f"'{parameter_name}' contains invalid residues: {', '.join([invalid_key for invalid_key in (PARAMETER.keys() - self.CONFIG.config['RESIDUE_LIST'].keys())])}")
                 for residue,target in PARAMETER.items():
                     if not isinstance(target,int) and not isinstance(target,float):
-                        raise configurationError(f"Non-numerical entry in '{parameter_name}', '{residue}':{target}.")
+                        raise configurationError(f"Non-numerical entry in '{parameter_name}', '{residue}':{target}")
                     if target < 0:
-                        raise configurationError(f"Invalid entry in '{parameter_name}', '{residue}':{target}.")
+                        raise configurationError(f"Invalid entry in '{parameter_name}', '{residue}':{target}")
             case 'SPECTATOR_DEV':
-                if PARAMETER is None and self.RUN_CONFIG.config['SPECTATOR_TARGET'] is None:
+                if PARAMETER is None and self.CONFIG.config['SPECTATOR_TARGET'] is None:
                     return
                 if PARAMETER == None:
-                    self.RUN_CONFIG.config[parameter_name] = {res:0 for res in self.RUN_CONFIG.config['SPECTATOR_TARGET'].keys()}
-                    PARAMETER = self.RUN_CONFIG.config[parameter_name]
+                    self.CONFIG.config[parameter_name] = {res:0 for res in self.CONFIG.config['SPECTATOR_TARGET'].keys()}
+                    PARAMETER = self.CONFIG.config[parameter_name]
                 else:
-                    if (PARAMETER.keys() - self.RUN_CONFIG.config['RESIDUE_LIST'].keys()):
-                        raise configurationError(f"'{parameter_name}' contains invalid residues: {', '.join([invalid_key for invalid_key in (PARAMETER.keys() - self.RUN_CONFIG.config['RESIDUE_LIST'].keys())])}")
-                    if PARAMETER.keys() != self.RUN_CONFIG.config['SPECTATOR_TARGET'].keys():
-                        raise mySystemError(f"'{parameter_name}' and 'SPECTATOR_TARGET' keys do not match.")
+                    if (PARAMETER.keys() - self.CONFIG.config['RESIDUE_LIST'].keys()):
+                        raise configurationError(f"'{parameter_name}' contains invalid residues: {', '.join([invalid_key for invalid_key in (PARAMETER.keys() - self.CONFIG.config['RESIDUE_LIST'].keys())])}")
+                    if PARAMETER.keys() != self.CONFIG.config['SPECTATOR_TARGET'].keys():
+                        raise mySystemError(f"'{parameter_name}' and 'SPECTATOR_TARGET' keys do not match")
                     for residue,target in PARAMETER.items():
                         if not isinstance(target,int) and not isinstance(target,float):
-                            raise configurationError(f"Non-numerical entry in '{parameter_name}', '{residue}':{target}.")
+                            raise configurationError(f"Non-numerical entry in '{parameter_name}', '{residue}':{target}")
                         if target < 0:
-                            raise configurationError(f"Invalid entry in '{parameter_name}', '{residue}':{target}.")
+                            raise configurationError(f"Invalid entry in '{parameter_name}', '{residue}':{target}")
             case 'RESIDUE_DIELECTRICS':
                 if PARAMETER is None or PARAMETER == {}:
-                    if self.RUN_CONFIG.configExists('OUTPUT_TYPE') and 'QCHEM' in self.RUN_CONFIG.config['OUTPUT_TYPE']:
-                        raise configurationError(f"QCHEM output was requested but no '{parameter_name}' was given.")
+                    if self.CONFIG.configExists('OUTPUT_TYPE') and 'QCHEM' in self.CONFIG.config['OUTPUT_TYPE']:
+                        raise configurationError(f"QCHEM output was requested but no '{parameter_name}' was given")
                     return
-                if PARAMETER.keys() != self.RUN_CONFIG.config['RESIDUE_LIST'].keys():
-                    raise configurationError(f"Incomplete '{parameter_name}'. Missing residues {set(self.RUN_CONFIG.config['RESIDUE_LIST'].keys()) - set(PARAMETER.keys())}")
+                if PARAMETER.keys() != self.CONFIG.config['RESIDUE_LIST'].keys():
+                    raise configurationError(f"Incomplete '{parameter_name}'. Missing residues {set(self.CONFIG.config['RESIDUE_LIST'].keys()) - set(PARAMETER.keys())}")
                 for residue,dielectric in PARAMETER.items():
                     if not isinstance(dielectric,int) and not isinstance(dielectric,float):
-                        raise configurationError(f"Non-numerical entry in '{parameter_name}', '{residue}':{dielectric}.")
+                        raise configurationError(f"Non-numerical entry in '{parameter_name}', '{residue}':{dielectric}")
                     if dielectric < 0:
-                        raise configurationError(f"Invalid entry in '{parameter_name}', '{residue}':{dielectric}.")
+                        raise configurationError(f"Invalid entry in '{parameter_name}', '{residue}':{dielectric}")
             case 'RESIDUE_CHARGES':
                 if PARAMETER is None or PARAMETER == {}:
-                    if self.RUN_CONFIG.configExists('OUTPUT_TYPE') and 'QCHEM' in self.RUN_CONFIG.config['OUTPUT_TYPE']:
-                        raise configurationError(f"QCHEM output was requested but no '{parameter_name}' was given.")
+                    if self.CONFIG.configExists('OUTPUT_TYPE') and 'QCHEM' in self.CONFIG.config['OUTPUT_TYPE']:
+                        raise configurationError(f"QCHEM output was requested but no '{parameter_name}' was given")
                     return
-                if PARAMETER.keys() != self.RUN_CONFIG.config['RESIDUE_LIST'].keys():
-                    raise configurationError(f"Incomplete '{parameter_name}'. Missing residues {set(self.RUN_CONFIG.config['RESIDUE_LIST'].keys()) - set(PARAMETER.keys())}.")
+                if PARAMETER.keys() != self.CONFIG.config['RESIDUE_LIST'].keys():
+                    raise configurationError(f"Incomplete '{parameter_name}'. Missing residues {set(self.CONFIG.config['RESIDUE_LIST'].keys()) - set(PARAMETER.keys())}")
                 for residue,charge in PARAMETER.items():
                     if not isinstance(charge,int) and not isinstance(charge,float):
-                        raise configurationError(f"Invalid entry in '{parameter_name}', '{residue}':{charge}.")
+                        raise configurationError(f"Invalid entry in '{parameter_name}', '{residue}':{charge}")
             case 'QC_BASIS':
                 if PARAMETER is None:
-                    if self.RUN_CONFIG.configExists('OUTPUT_TYPE') and 'QCHEM' in self.RUN_CONFIG.config['OUTPUT_TYPE']:
-                        raise configurationError(f"QCHEM output was requested but no '{parameter_name}' was given.")
+                    if self.CONFIG.configExists('OUTPUT_TYPE') and 'QCHEM' in self.CONFIG.config['OUTPUT_TYPE']:
+                        raise configurationError(f"QCHEM output was requested but no '{parameter_name}' was given")
                     return
                 if isinstance(PARAMETER,dict):
-                    user_atom_types = self.RUN_CONFIG.config['ATOM_TYPE_LIST']
+                    user_atom_types = self.CONFIG.config['ATOM_TYPE_LIST']
                     check_atom_types = sorted(list(PARAMETER.keys()))
                     if sorted(user_atom_types) != check_atom_types:
-                        raise mySystemError(f"'{parameter_name}' is not complete. System atom type list is: {user_atom_types}.")
+                        raise mySystemError(f"'{parameter_name}' is not complete. System atom type list is: {user_atom_types}")
                     element_symbol_basis_dict = {}
                     for atom_type,basis in PARAMETER.items():
                         element = self.getElementSymbol(atom_type)
@@ -683,16 +683,16 @@ class system():
                             element_symbol_basis_dict[element] = basis
                             continue
                         if element_symbol_basis_dict[element] != basis:
-                            raise mySystemError(f"Basis set mismatch found for atom type '{atom_type}', element '{element}'. Multiple basis sets for single elements (BASIS MIXED) are not supported. If this atom type naming does not represent this element, please rename the atom type.")
-                    self.RUN_CONFIG.config[parameter_name] = element_symbol_basis_dict
+                            raise mySystemError(f"Basis set mismatch found for atom type '{atom_type}', element '{element}'. Multiple basis sets for single elements (BASIS MIXED) are not supported. If this atom type naming does not represent this element, please rename the atom type")
+                    self.CONFIG.config[parameter_name] = element_symbol_basis_dict
             case 'QC_BASIS2':
                 if PARAMETER is None:
                     return
                 if isinstance(PARAMETER,dict):
-                    user_atom_types = self.RUN_CONFIG.config['ATOM_TYPE_LIST']
+                    user_atom_types = self.CONFIG.config['ATOM_TYPE_LIST']
                     check_atom_types = sorted(list(PARAMETER.keys()))
                     if sorted(user_atom_types) != check_atom_types:
-                        raise mySystemError(f"'{parameter_name}' is not complete. System atom type list is: {user_atom_types}.")
+                        raise mySystemError(f"'{parameter_name}' is not complete. System atom type list is: {user_atom_types}")
                     element_symbol_basis_dict = {}
                     for atom_type,basis2 in PARAMETER.items():
                         element = self.getElementSymbol(atom_type)
@@ -700,87 +700,87 @@ class system():
                             element_symbol_basis_dict[element] = basis2
                             continue
                         if element_symbol_basis_dict[element] != basis2:
-                            raise mySystemError(f"Auxillary basis set mismatch found for atom type '{atom_type}', element '{element}'. Multiple aux basis sets for single elements (BASIS2 MIXED) are not supported. If this atom type naming does not represent this element, please rename the atom type.")
-                    self.RUN_CONFIG.config[parameter_name] = element_symbol_basis_dict
+                            raise mySystemError(f"Auxillary basis set mismatch found for atom type '{atom_type}', element '{element}'. Multiple aux basis sets for single elements (BASIS2 MIXED) are not supported. If this atom type naming does not represent this element, please rename the atom type")
+                    self.CONFIG.config[parameter_name] = element_symbol_basis_dict
             case 'QC_PSEUDO':
                 if PARAMETER is None:
                     return
                 
                 element_symbol_basis_dict = {}
                 for atom_type,pseudo in PARAMETER.items():
-                    if atom_type not in self.RUN_CONFIG.config['ATOM_TYPE_LIST']:
+                    if atom_type not in self.CONFIG.config['ATOM_TYPE_LIST']:
                         raise mySystemError(f"Invalid atom type in '{parameter_name}': '{atom_type}'")
                     element = self.getElementSymbol(atom_type)
                     if element not in element_symbol_basis_dict:
                         element_symbol_basis_dict[element] = pseudo
                         continue
                     if element_symbol_basis_dict[element] != pseudo:
-                        raise mySystemError(f"Pseudopotential mismatch found for atom type '{atom_type}', element '{element}'. Multiple pseudopotentials may not be assigned to a single element. If this atom type naming does not represent this element, please rename the atom type.")
+                        raise mySystemError(f"Pseudopotential mismatch found for atom type '{atom_type}', element '{element}'. Multiple pseudopotentials may not be assigned to a single element. If this atom type naming does not represent this element, please rename the atom type")
                 
-                if isinstance(self.RUN_CONFIG.config['QC_BASIS'],str):
-                    self.RUN_CONFIG.config['QC_BASIS'] = {atom_type:self.RUN_CONFIG.config['QC_BASIS'] for atom_type in self.RUN_CONFIG.config['ATOM_TYPE_LIST']}
-                    for atom_type,pseudo in self.RUN_CONFIG.config['QC_PSEUDO'].items():
-                        self.RUN_CONFIG.config['QC_BASIS'][atom_type] = pseudo
-                if isinstance(self.RUN_CONFIG.config['QC_BASIS2'],str):
-                    self.RUN_CONFIG.config['QC_BASIS2'] = {atom_type:self.RUN_CONFIG.config['QC_BASIS2'] for atom_type in self.RUN_CONFIG.config['ATOM_TYPE_LIST']}
-                    for atom_type,pseudo in self.RUN_CONFIG.config['QC_PSEUDO'].items():
-                        self.RUN_CONFIG.config['QC_BASIS2'][atom_type] = pseudo
+                if isinstance(self.CONFIG.config['QC_BASIS'],str):
+                    self.CONFIG.config['QC_BASIS'] = {atom_type:self.CONFIG.config['QC_BASIS'] for atom_type in self.CONFIG.config['ATOM_TYPE_LIST']}
+                    for atom_type,pseudo in self.CONFIG.config['QC_PSEUDO'].items():
+                        self.CONFIG.config['QC_BASIS'][atom_type] = pseudo
+                if isinstance(self.CONFIG.config['QC_BASIS2'],str):
+                    self.CONFIG.config['QC_BASIS2'] = {atom_type:self.CONFIG.config['QC_BASIS2'] for atom_type in self.CONFIG.config['ATOM_TYPE_LIST']}
+                    for atom_type,pseudo in self.CONFIG.config['QC_PSEUDO'].items():
+                        self.CONFIG.config['QC_BASIS2'][atom_type] = pseudo
 
-                self.RUN_CONFIG.config[parameter_name] = element_symbol_basis_dict
+                self.CONFIG.config[parameter_name] = element_symbol_basis_dict
             case 'QC_METHOD':
                 if PARAMETER is None:
-                    if self.RUN_CONFIG.configExists('OUTPUT_TYPE') and 'QCHEM' in self.RUN_CONFIG.config['OUTPUT_TYPE']:
-                        raise configurationError(f"QCHEM output was requested but no '{parameter_name}' was given.")
+                    if self.CONFIG.configExists('OUTPUT_TYPE') and 'QCHEM' in self.CONFIG.config['OUTPUT_TYPE']:
+                        raise configurationError(f"QCHEM output was requested but no '{parameter_name}' was given")
                     return
             case 'QC_PCM_METHOD':
                 if PARAMETER is None:
-                    if self.RUN_CONFIG.configExists('OUTPUT_TYPE') and 'QCHEM' in self.RUN_CONFIG.config['OUTPUT_TYPE']:
-                        raise configurationError(f"QCHEM output was requested but no '{parameter_name}' was given.")
+                    if self.CONFIG.configExists('OUTPUT_TYPE') and 'QCHEM' in self.CONFIG.config['OUTPUT_TYPE']:
+                        raise configurationError(f"QCHEM output was requested but no '{parameter_name}' was given")
             case 'PROFILE':
                 if PARAMETER is None:
-                    self.RUN_CONFIG.config[parameter_name] = False
+                    self.CONFIG.config[parameter_name] = False
             case 'DEBUG':
                 if PARAMETER is None:
-                    self.RUN_CONFIG.config[parameter_name] = False
+                    self.CONFIG.config[parameter_name] = False
             case 'COORD_NUM_RESIDUE':
                 if PARAMETER is None:
                     return
                 if isinstance(PARAMETER,str):
-                    self.RUN_CONFIG.config[parameter_name] = [PARAMETER]
-                    PARAMETER = self.RUN_CONFIG.config[parameter_name]
+                    self.CONFIG.config[parameter_name] = [PARAMETER]
+                    PARAMETER = self.CONFIG.config[parameter_name]
                 for residue in PARAMETER:
-                    if residue not in self.RUN_CONFIG.config['RESIDUE_LIST']:
+                    if residue not in self.CONFIG.config['RESIDUE_LIST']:
                         raise configurationError(f"Invalid residue encountered in '{parameter_name}': {residue}")
             case 'K_LIGAND':
                 if PARAMETER is None:
                     return
                 if isinstance(PARAMETER,str):
-                    self.RUN_CONFIG.config[parameter_name] = [PARAMETER]
-                    PARAMETER = self.RUN_CONFIG.config[parameter_name]
+                    self.CONFIG.config[parameter_name] = [PARAMETER]
+                    PARAMETER = self.CONFIG.config[parameter_name]
                 for residue in PARAMETER:
-                    if residue not in self.RUN_CONFIG.config['RESIDUE_LIST']:
+                    if residue not in self.CONFIG.config['RESIDUE_LIST']:
                         raise configurationError(f"Invalid residue encountered in '{parameter_name}': {residue}")
             case 'K_LIGAND_CONC':
                 if PARAMETER is None:
                     return
-                if not self.RUN_CONFIG.configExists('K_LIGAND'):
+                if not self.CONFIG.configExists('K_LIGAND'):
                     raise mySystemError(f"'K_LIGAND' not found")
                 if isinstance(PARAMETER,(int,float)):
-                    self.RUN_CONFIG.config[parameter_name] = [PARAMETER]
-                    PARAMETER = self.RUN_CONFIG.config[parameter_name]
+                    self.CONFIG.config[parameter_name] = [PARAMETER]
+                    PARAMETER = self.CONFIG.config[parameter_name]
                 for conc in PARAMETER:
                     if not isinstance(conc,(int,float)):
                         raise mySystemError(f"Non-numerical concentration encountered in '{PARAMETER}'")
 
-                if len(self.RUN_CONFIG.config['K_LIGAND']) != len(PARAMETER):
+                if len(self.CONFIG.config['K_LIGAND']) != len(PARAMETER):
                     raise mySystemError(f"K_LIGAND and K_LIGAND_CONC lengths do not match")
             case 'VIS_SUB_GRAPH_SIZE':
                 #Fix!!
                 return
                 if PARAMETER <= 0:
-                    raise mySystemError(f"Invalid '{PARAMETER}', must be larger than 0.")
+                    raise mySystemError(f"Invalid '{PARAMETER}', must be larger than 0")
             case _:
-                raise configurationError(f'Parameter {parameter_name} does not have an internal check case, this is not user issue.')
+                raise configurationError(f'Parameter {parameter_name} does not have an internal check case, this is not user issue')
             
         self.calculateLocalPeakMemUse()
 
@@ -954,7 +954,7 @@ class system():
                 self.boxY[index-1] = int(self.line[8])
                 self.boxZ[index-1] = int(self.line[9])
             else:
-                print("Data file does not use 'full' atom style- using default parsing method. This may result in errors")
+                self.CONFIG.STDOUT.write("Data file does not use 'full' atom style- using default parsing method. This may result in errors.\n")
 
                 index = int(self.line[0])
                 for data in range(dataCount):
@@ -984,7 +984,7 @@ class system():
         self.checkConfiguration('ATOM_TYPE_LIST')
 
         if self.RANK == 0:
-            print("Data File Parsed",flush=True)
+            self.CONFIG.STDOUT.write("Data File Parsed\n")
 
         self.calculateLocalPeakMemUse()
 
@@ -996,7 +996,7 @@ class system():
             self.line = self.DATA_FILE.readline()
 
         if not self.line:
-            raise mySystemError("'Bonds' section missing from LAMMPS data file.")
+            raise mySystemError("'Bonds' section missing from LAMMPS data file")
         
         self.line = self.DATA_FILE.readline() #Move past "Bonds" line in LAMMPSTRJ
 
@@ -1042,8 +1042,7 @@ class system():
 
                 self.line = self.DATA_FILE.readline()
             else:
-                print(f'Trouble line: {self.line}')
-                print('Unable to parse "Bonds" section as written')
+                self.CONFIG.STDOUT.write('Unable to parse "Bonds" section as written.\n')
                 break
 
         #Create empty MOLECULE array, this allows for quick indexing using the molecule indexs contained in CONNECTIVITY
@@ -1159,7 +1158,7 @@ class system():
         self.checkConfiguration('ATOM_TYPE_LIST',list(temp_atom_type_set))
 
         if self.RANK == 0:
-            print("Data File Parsed",flush=True)
+            self.CONFIG.STDOUT.write("Data File Parsed\n")
 
         self.calculateLocalPeakMemUse()
 
@@ -1173,10 +1172,10 @@ class system():
         
         for mol in self.MOLECULES:
             if not mol.residue:
-                raise mySystemError('Encountered missing molecule residue while creating residue list.')
+                raise mySystemError('Encountered missing molecule residue while creating residue list')
             elif mol.residue in residue_list:
                 if sorted(residue_list[mol.residue]) != sorted(self.ATOMTYPES[mol.atoms]):
-                    raise mySystemError('Residue with arbitrary atom composition encountered.')
+                    raise mySystemError('Residue with arbitrary atom composition encountered')
                 continue
             
             residue_list[mol.residue] = self.ATOMTYPES[mol.atoms]
@@ -1189,18 +1188,18 @@ class system():
         if self.MOLECULES is None:
             raise mySystemError('No molecules found when creating internal residue list')
         
-        if not self.RUN_CONFIG.configExists('RESIDUE_LIST'):
+        if not self.CONFIG.configExists('RESIDUE_LIST'):
             raise mySystemError('Residue dictionary is empty')
         
         #Iterate through molecule list and assign residues
         for mol in self.MOLECULES: 
             mol.residue = None 
-            for res in self.RUN_CONFIG.config['RESIDUE_LIST']:
-                if len(mol.atoms) != len(self.RUN_CONFIG.config['RESIDUE_LIST'][res]):
+            for res in self.CONFIG.config['RESIDUE_LIST']:
+                if len(mol.atoms) != len(self.CONFIG.config['RESIDUE_LIST'][res]):
                     continue
                 
                 check_res = []
-                for i in self.RUN_CONFIG.config['RESIDUE_LIST'][res]:
+                for i in self.CONFIG.config['RESIDUE_LIST'][res]:
                     check_res.append(i)
 
                 for atom in mol.atoms:
@@ -1215,14 +1214,14 @@ class system():
                     break
 
             if mol.residue is None:
-                raise mySystemError('Molecule type encountered which is not in residue dictionary, check that RESIDUE_LIST is complete.')
+                raise mySystemError('Molecule type encountered which is not in residue dictionary, check that RESIDUE_LIST is complete')
             
         self.calculateLocalPeakMemUse()
 
     def createMolecules(self):
         
         if np.any(self.CONNECTIVITY == -1):
-            print('ERROR: Incomplete connectivity array provided to createMolecules()')
+            self.CONFIG.STDOUT.write('ERROR: Incomplete connectivity array provided to createMolecules()\n')
             return
         else:
             self.NUM_MOLECULES = np.unique(self.CONNECTIVITY).size
@@ -1232,7 +1231,7 @@ class system():
             for i in range(self.CONNECTIVITY.size):
 
                 if not self.MOLECULES[self.CONNECTIVITY[i]]:
-                    self.MOLECULES[self.CONNECTIVITY[i]] = self.molecule(self.RUN_CONFIG,i,index=self.CONNECTIVITY[i])
+                    self.MOLECULES[self.CONNECTIVITY[i]] = self.molecule(self.CONFIG,i,index=self.CONNECTIVITY[i])
                 else:
                     self.MOLECULES[self.CONNECTIVITY[i]].addAtom(i)
 
@@ -1244,7 +1243,7 @@ class system():
         Unsplit_REACTANTS = []
 
         for molecule_number in range(len(self.MOLECULES)):
-            if self.MOLECULES[molecule_number].residue == self.RUN_CONFIG.config['REACTANT']:
+            if self.MOLECULES[molecule_number].residue == self.CONFIG.config['REACTANT']:
                 Unsplit_REACTANTS.append(molecule_number)
 
         start_indexes,stop_indexes = self.splitIndexes(len(Unsplit_REACTANTS),self.NP)
@@ -1372,7 +1371,7 @@ class system():
         
         if self.NP == 1: #Operating serially
             
-            #print(f'RANK {self.RANK}: calling wrapMoleculesLAMMPS(self.MOLECULES[{startIndex}:{stopIndex}])')
+            #self.CONFIG.STDOUT.write(f'RANK {self.RANK}: calling wrapMoleculesLAMMPS(self.MOLECULES[{startIndex}:{stopIndex}])\n')
 
             all_x_index,all_x_change,all_y_index,all_y_change,all_z_index,all_z_change = self.wrapMoleculesLAMMPS(0,self.NUM_MOLECULES)
 
@@ -1427,7 +1426,7 @@ class system():
 
     def createReactantClusters(self):
 
-        #Pick self.RUN_CONFIG.config['CLUSTER_MOLECULES']-1 closest molecules to reactant
+        #Pick self.CONFIG.config['CLUSTER_MOLECULES']-1 closest molecules to reactant
 
         for reactant in self.REACTANTS:
 
@@ -1437,7 +1436,7 @@ class system():
             closest_neighbors = np.argsort(radialDistanceList)
 
             #Assign reactant clusters as X closest neighbors
-            self.MOLECULES[reactant].cluster = closest_neighbors[:self.RUN_CONFIG.config['CLUSTER_MOLECULES']]
+            self.MOLECULES[reactant].cluster = closest_neighbors[:self.CONFIG.config['CLUSTER_MOLECULES']]
 
         self.calculateLocalPeakMemUse()
 
@@ -1495,7 +1494,7 @@ class system():
     def makeElementSymbolList(self):
         self.ELEMENTSYMBOLS = np.empty(self.NUM_ATOMS,dtype=object)
         if self.ATOMTYPES.size != self.ELEMENTSYMBOLS.size:
-            raise mySystemError('Atom type array size does not match element symbol array size.')
+            raise mySystemError('Atom type array size does not match element symbol array size')
         for index,atom_type in enumerate(self.ATOMTYPES):
             if atom_type in self.ELEMENTS:
                 self.ELEMENTSYMBOLS[index] = atom_type
@@ -1538,16 +1537,16 @@ class system():
 
             self.RANK_CLUSTERS_WRITTEN += 1
 
-            if self.RUN_CONFIG.config['DEBUG']:
+            if self.CONFIG.config['DEBUG']:
                 self.debugCoordinationShells(reactant)
 
-            if 'XYZ' in self.RUN_CONFIG.config['OUTPUT_TYPE']:
+            if 'XYZ' in self.CONFIG.config['OUTPUT_TYPE']:
                 self.extractClusterXYZFormat(reactant)
-            if 'QCHEM' in self.RUN_CONFIG.config['OUTPUT_TYPE']:
+            if 'QCHEM' in self.CONFIG.config['OUTPUT_TYPE']:
                 self.extractClusterQchemFormat(reactant)
-            if 'GRO' in self.RUN_CONFIG.config['OUTPUT_TYPE']:
+            if 'GRO' in self.CONFIG.config['OUTPUT_TYPE']:
                 self.extractClusterGroFormat(reactant)
-            if 'NDX' in self.RUN_CONFIG.config['OUTPUT_TYPE']:
+            if 'NDX' in self.CONFIG.config['OUTPUT_TYPE']:
                 self.extractClusterGMXIndexFormat(reactant)
 
         self.calculateLocalPeakMemUse()
@@ -1557,7 +1556,7 @@ class system():
 
     def extractClusterXYZFormat(self,reactant:molecule):
 
-        outfile = open('./' + self.RUN_CONFIG.config['WRITE_DIRECTORY'] + '/' + self.RUN_CONFIG.config['RUN_NAME'] + '/' + self.RUN_CONFIG.config['RUN_NAME'] + "_" + str(self.RANK_CLUSTERS_WRITTEN+self.CLUSTER_WRITE_OFFSET) + ".xyz", "w")
+        outfile = open('./' + self.CONFIG.config['WRITE_DIRECTORY'] + '/' + self.CONFIG.config['RUN_NAME'] + '/' + self.CONFIG.config['RUN_NAME'] + "_" + str(self.RANK_CLUSTERS_WRITTEN+self.CLUSTER_WRITE_OFFSET) + ".xyz", "w")
 
         #----------------write header---------------------------------------------------------
 
@@ -1593,7 +1592,7 @@ class system():
         #Determine atomic dielectric embedding functions within cluster
         self.reactantClusterDielectric(reactant)
 
-        outfile = open('./' + self.RUN_CONFIG.config['WRITE_DIRECTORY'] + '/' + self.RUN_CONFIG.config['RUN_NAME'] + '/' + self.RUN_CONFIG.config['RUN_NAME'] + "_" + str(self.RANK_CLUSTERS_WRITTEN+self.CLUSTER_WRITE_OFFSET) + ".in", "w")
+        outfile = open('./' + self.CONFIG.config['WRITE_DIRECTORY'] + '/' + self.CONFIG.config['RUN_NAME'] + '/' + self.CONFIG.config['RUN_NAME'] + "_" + str(self.RANK_CLUSTERS_WRITTEN+self.CLUSTER_WRITE_OFFSET) + ".in", "w")
 
         #----------------write header---------------------------------------------------------
         
@@ -1603,7 +1602,7 @@ class system():
         for molecule_index in {reactant.index} | reactant.extract_shells:
             molecule = self.MOLECULES[molecule_index]
             res = molecule.residue
-            charge += self.RUN_CONFIG.config['RESIDUE_CHARGES'][res]
+            charge += self.CONFIG.config['RESIDUE_CHARGES'][res]
         
         write = f"!------Electronic/Nuclear Configurations------\n$molecule\n{charge} 1\n" #Only writes singlet input files (maybe change)
 
@@ -1638,22 +1637,22 @@ class system():
         optional_basis2_section = ''
         optional_ecp_section = ''
         write += '!------Calculation Type Section------\n$rem\n'
-        write += f"METHOD\t{self.RUN_CONFIG.config['QC_METHOD']}\t\t\t\t!Method of approximating the schrodinger equation\n"
-        if isinstance(self.RUN_CONFIG.config['QC_BASIS'],str):
-            write += f"BASIS\t{self.RUN_CONFIG.config['QC_BASIS']}\t\t\t\t!Primary basis set\n"
+        write += f"METHOD\t{self.CONFIG.config['QC_METHOD']}\t\t\t\t!Method of approximating the schrodinger equation\n"
+        if isinstance(self.CONFIG.config['QC_BASIS'],str):
+            write += f"BASIS\t{self.CONFIG.config['QC_BASIS']}\t\t\t\t!Primary basis set\n"
         else:
             write += f"BASIS\tGEN\t\t\t\t!Primary basis set\n"
-            optional_basis_section = '$basis\n' + '\n'.join([f"{element} 0\n{self.RUN_CONFIG.config['QC_BASIS'][element]}\n****" for element in elements]) + '\n$end\n\n'
-        if self.RUN_CONFIG.configExists('QC_BASIS2'):
-            if isinstance(self.RUN_CONFIG.config['QC_BASIS2'],str):
-                write += f"BASIS2\t{self.RUN_CONFIG.config['QC_BASIS2']}\t\t\t\t!Auxilary basis set\n"
+            optional_basis_section = '$basis\n' + '\n'.join([f"{element} 0\n{self.CONFIG.config['QC_BASIS'][element]}\n****" for element in elements]) + '\n$end\n\n'
+        if self.CONFIG.configExists('QC_BASIS2'):
+            if isinstance(self.CONFIG.config['QC_BASIS2'],str):
+                write += f"BASIS2\t{self.CONFIG.config['QC_BASIS2']}\t\t\t\t!Auxilary basis set\n"
             else:
                 write += f"BASIS2\tGEN\t\t\t\t!Auxilary basis set\n"
-                optional_basis2_section = '$basis2\n' + '\n'.join([f"{element} 0\n{self.RUN_CONFIG.config['QC_BASIS2'][element]}\n****" for element in elements]) + '\n$end\n\n'
+                optional_basis2_section = '$basis2\n' + '\n'.join([f"{element} 0\n{self.CONFIG.config['QC_BASIS2'][element]}\n****" for element in elements]) + '\n$end\n\n'
             write += f"DUAL_BASIS_ENERGY\tTRUE\t\t\t\t!Perform SCF energy calculation using dual-basis approximation\n"
-        if self.RUN_CONFIG.configExists('QC_PSEUDO'):
+        if self.CONFIG.configExists('QC_PSEUDO'):
             write += f"ECP\tGEN\t\t\t\t!Pseudopotential\n"
-            optional_ecp_section = '$ecp\n' + '\n'.join([f"{element} 0\n{self.RUN_CONFIG.config['QC_PSEUDO'][element]}\n****" for element in elements if element in self.RUN_CONFIG.config['QC_PSEUDO']]) + '\n$end\n\n'
+            optional_ecp_section = '$ecp\n' + '\n'.join([f"{element} 0\n{self.CONFIG.config['QC_PSEUDO'][element]}\n****" for element in elements if element in self.CONFIG.config['QC_PSEUDO']]) + '\n$end\n\n'
         
         write += 'JOB_TYPE SP\t\t\t\t!Single point calculation\n'
         write += 'SCF_ALGORITHM DIIS\t\t\t\t!SCF convergence algorithm\n'
@@ -1691,10 +1690,10 @@ class system():
 
     def extractClusterGroFormat(self,reactant:molecule):
 
-        outfile = open(f"./{self.RUN_CONFIG.config['WRITE_DIRECTORY']}/{self.RUN_CONFIG.config['RUN_NAME']}/{self.RUN_CONFIG.config['RUN_NAME']}_{self.RANK_CLUSTERS_WRITTEN+self.CLUSTER_WRITE_OFFSET}.gro", "w")
+        outfile = open(f"./{self.CONFIG.config['WRITE_DIRECTORY']}/{self.CONFIG.config['RUN_NAME']}/{self.CONFIG.config['RUN_NAME']}_{self.RANK_CLUSTERS_WRITTEN+self.CLUSTER_WRITE_OFFSET}.gro", "w")
 
         #***********
-        # hbondfile = open(f"./{self.RUN_CONFIG.config['WRITE_DIRECTORY']}/{self.RUN_CONFIG.config['RUN_NAME']}/edges.txt", "w")
+        # hbondfile = open(f"./{self.CONFIG.config['WRITE_DIRECTORY']}/{self.CONFIG.config['RUN_NAME']}/edges.txt", "w")
         # order_vs_index_atoms = []
         # order_vs_index_mols = []
         #***********
@@ -1789,9 +1788,9 @@ class system():
 
         if self.GMX_SYSTEM_INDEXES is None:
             self.GMX_SYSTEM_INDEXES = {atom for atom in range(self.NUM_ATOMS)}
-        outfile = open(f"./{self.RUN_CONFIG.config['WRITE_DIRECTORY']}/{self.RUN_CONFIG.config['RUN_NAME']}/{self.RUN_CONFIG.config['RUN_NAME']}_{self.RANK_CLUSTERS_WRITTEN+self.CLUSTER_WRITE_OFFSET}.ndx", "w")
+        outfile = open(f"./{self.CONFIG.config['WRITE_DIRECTORY']}/{self.CONFIG.config['RUN_NAME']}/{self.CONFIG.config['RUN_NAME']}_{self.RANK_CLUSTERS_WRITTEN+self.CLUSTER_WRITE_OFFSET}.ndx", "w")
 
-        header = ';' + self.clusterFileHeader(reactant) + f";Trajectory file path: {self.RUN_CONFIG.config['TRJ_FILE_PATH']}\n"
+        header = ';' + self.clusterFileHeader(reactant) + f";Trajectory file path: {self.CONFIG.config['TRJ_FILE_PATH']}\n"
         outfile.write(header)
         write = '[Cluster]\n'
         cluster = {atom for atom in reactant.atoms} | {atom for molecule in reactant.extract_shells for atom in self.MOLECULES[molecule].atoms}
@@ -1867,8 +1866,7 @@ class system():
                                                     hBondConnectivity[H][ONF] = 1
                                                     hBondConnectivity[ONF][H] = 1
 
-        #print(clusterHBonds)
-        print("H-Bond Connectivity Analysis Complete",flush=True)
+        self.CONFIG.STDOUT.write("H-Bond Connectivity Analysis Complete\n")
 
     def readFrameLAMMPSOld(self):
 
@@ -1935,7 +1933,7 @@ class system():
             self.line = self.TRJ_FILE.readline()
 
         if atom_num_changed:
-            raise mySystemError("Atom number changed while reading trajectory.",flush=True)
+            raise mySystemError("Atom number changed while reading trajectory",flush=True)
 
         if not self.line:
             self.PASS = False
@@ -1961,7 +1959,7 @@ class system():
         while frame_index != START:
             frame_start = mm.find(b'ITEM: TIMESTEP', frame_start+1) #Look for the start of the next frame, starting at byte 1 to avoid catching the current 'ITEM: TIMESTEP'
             if frame_start == -1:
-                raise mySystemError(f"START frame {START} exceeds total frames in file.")
+                raise mySystemError(f"START frame {START} exceeds total frames in file")
             frame_index += 1
         
         while frame_start < file_size and (frame_index < STOP or STOP == -1): #While not EOF or user requested STOP frame
@@ -2003,7 +2001,7 @@ class system():
             for _ in range(self.NUM_ATOMS):
                 frame_end = mm.find(b'\n', frame_end) + 1
                 if frame_end == 0:
-                    raise mySystemError('Premature EOF encountered when reading LAMMPS trajectory, file may be truncated.')
+                    raise mySystemError('Premature EOF encountered when reading LAMMPS trajectory, file may be truncated')
                 
             if atom_section_start == frame_end:
                 raise mySystemError(f'Unable to parse atom section of for frame: {self.STEP}')
@@ -2013,7 +2011,7 @@ class system():
             flat_atom_data = np.fromstring(atom_bytes.decode('utf-8'), dtype=np.float64, sep=' ')
 
             if flat_atom_data.size // atom_type_full_length != self.NUM_ATOMS:
-                raise mySystemError(f'Inconsistant atom number encountered at frame {self.STEP}.')
+                raise mySystemError(f'Inconsistant atom number encountered at frame {self.STEP}')
             
             #Reshape flat_atomic_data in id0,type0,x0,y0,z0,bx0,by0,bz0,id1,type1,x1,y1,z1,bx1,by1,bz1,... format into [[id0,id1,...],[type0,type1,...],...] format
             atomic_data_columated = flat_atom_data.reshape(-1, atom_type_full_length).T
@@ -2110,12 +2108,12 @@ class system():
 
     def createDebugOutFiles(self):
 
-        if self.RUN_CONFIG.config['DEBUG']:
+        if self.CONFIG.config['DEBUG']:
             coordOut = None
             self.debugOutFiles = {}
         
             for reactant_index in self.REACTANTS:
-                coordOut = open(f"./{self.RUN_CONFIG.config['WRITE_DIRECTORY']}/{self.RUN_CONFIG.config['RUN_NAME']}/reactant_{reactant_index}_coordination.txt", 'w')
+                coordOut = open(f"./{self.CONFIG.config['WRITE_DIRECTORY']}/{self.CONFIG.config['RUN_NAME']}/reactant_{reactant_index}_coordination.txt", 'w')
                 self.debugOutFiles[reactant_index] = coordOut
 
     def completeCutOffList(self):
@@ -2123,32 +2121,32 @@ class system():
         #Creates CUTOFF_TARGETS data structure mapping each atom type to any corresponding atom types with an interaction cutoff betweeen them
 
         new_entries = {}
-        for key in self.RUN_CONFIG.config['PAIR_CUTOFFS']:
+        for key in self.CONFIG.config['PAIR_CUTOFFS']:
             if isinstance(key[0],tuple) and isinstance(key[1],tuple):
                 for item1 in key[0]:
                     for item2 in key[1]:
-                        new_entries[(item1,item2)] = self.RUN_CONFIG.config['PAIR_CUTOFFS'][key]
-                        new_entries[(item2,item1)] = self.RUN_CONFIG.config['PAIR_CUTOFFS'][key]
+                        new_entries[(item1,item2)] = self.CONFIG.config['PAIR_CUTOFFS'][key]
+                        new_entries[(item2,item1)] = self.CONFIG.config['PAIR_CUTOFFS'][key]
             elif isinstance(key[0],tuple):
                 for item in key[0]:
-                    new_entries[(item,key[1])] = self.RUN_CONFIG.config['PAIR_CUTOFFS'][key]
-                    new_entries[(key[1],item)] = self.RUN_CONFIG.config['PAIR_CUTOFFS'][key]
+                    new_entries[(item,key[1])] = self.CONFIG.config['PAIR_CUTOFFS'][key]
+                    new_entries[(key[1],item)] = self.CONFIG.config['PAIR_CUTOFFS'][key]
             elif isinstance(key[1],tuple):
                 for item in key[1]:
-                    new_entries[(item,key[0])] = self.RUN_CONFIG.config['PAIR_CUTOFFS'][key]
-                    new_entries[(key[0],item)] = self.RUN_CONFIG.config['PAIR_CUTOFFS'][key]
+                    new_entries[(item,key[0])] = self.CONFIG.config['PAIR_CUTOFFS'][key]
+                    new_entries[(key[0],item)] = self.CONFIG.config['PAIR_CUTOFFS'][key]
             else:
-                new_entries[(key[0],key[1])] = self.RUN_CONFIG.config['PAIR_CUTOFFS'][key]
-                new_entries[(key[1],key[0])] = self.RUN_CONFIG.config['PAIR_CUTOFFS'][key]
+                new_entries[(key[0],key[1])] = self.CONFIG.config['PAIR_CUTOFFS'][key]
+                new_entries[(key[1],key[0])] = self.CONFIG.config['PAIR_CUTOFFS'][key]
 
-        self.RUN_CONFIG.config['PAIR_CUTOFFS'] = new_entries
+        self.CONFIG.config['PAIR_CUTOFFS'] = new_entries
         
         self.CUTOFF_TARGETS = {}
-        for key in self.RUN_CONFIG.config['PAIR_CUTOFFS']:
-            if key[0] in self.RUN_CONFIG.config['ATOM_TYPE_LIST']:
+        for key in self.CONFIG.config['PAIR_CUTOFFS']:
+            if key[0] in self.CONFIG.config['ATOM_TYPE_LIST']:
                 if key[0] not in self.CUTOFF_TARGETS:
                     self.CUTOFF_TARGETS[key[0]] = []
-                if key[1] in self.RUN_CONFIG.config['ATOM_TYPE_LIST'] and key[1] not in self.CUTOFF_TARGETS[key[0]]:
+                if key[1] in self.CONFIG.config['ATOM_TYPE_LIST'] and key[1] not in self.CUTOFF_TARGETS[key[0]]:
                     self.CUTOFF_TARGETS[key[0]].append(key[1])
 
     def updateReactantExtractClock(self,reactant: molecule,zero=False):
@@ -2159,7 +2157,7 @@ class system():
         if check:
             reactant.extract_wait_steps = self.EXTRACTION_TIMESTEP
         else:
-            reactant.extract_wait_steps -= self.RUN_CONFIG.config['DUMP_FREQ']
+            reactant.extract_wait_steps -= self.CONFIG.config['DUMP_FREQ']
         return check
 
     def clusterGraph(self, reactant: molecule, FIND_COORDINATION:set=None):
@@ -2194,7 +2192,7 @@ class system():
                     #Distance list containing only distances to relevant atoms in cluster (those that are actually in the cutoff list)
                     distance_list = self.allPBCDistance(self.X[current_atom],self.Y[current_atom],self.Z[current_atom],self.X[relevent_atoms],self.Y[relevent_atoms],self.Z[relevent_atoms])
 
-                    cutoff_mask = distance_list <= self.RUN_CONFIG.config['PAIR_CUTOFFS'][(current_type,target)]
+                    cutoff_mask = distance_list <= self.CONFIG.config['PAIR_CUTOFFS'][(current_type,target)]
 
                     #If any new molecule atoms pass the cutoff test
                     if np.sum(cutoff_mask) > 0:
@@ -2248,13 +2246,13 @@ class system():
 
     def reactantGraph(self):
 
-        making_rxn_graph = self.RUN_CONFIG.config['CREATE_RXN_GRAPH']
+        making_rxn_graph = self.CONFIG.config['CREATE_RXN_GRAPH']
 
         for reactant_index in self.REACTANTS: #For each cluster...
 
             reactant = self.MOLECULES[reactant_index]
 
-            if self.RUN_CONFIG.configExists('FILTER_REACTANTS_BY_Z'):
+            if self.CONFIG.configExists('FILTER_REACTANTS_BY_Z'):
                 if not self.filterClusterZLocation(reactant_index):
                     reactant.current = None
                     continue
@@ -2262,14 +2260,14 @@ class system():
             time_to_extract = False
             extractable_cluster = False
             finished_extracting = self.rankClustersExtracted() #Total extracted cluster number (across ranks) equals 'CLUSTERS_TO_EXTRACT'
-            all_atoms_need_coordination = ('QCHEM' in self.RUN_CONFIG.config['OUTPUT_TYPE']) if self.RUN_CONFIG.configExists('OUTPUT_TYPE') else False #For each molecule added to the cluster, must determine its coordination enviornment as well (for dielectic)
+            all_atoms_need_coordination = ('QCHEM' in self.CONFIG.config['OUTPUT_TYPE']) if self.CONFIG.configExists('OUTPUT_TYPE') else False #For each molecule added to the cluster, must determine its coordination enviornment as well (for dielectic)
 
             reactant.buildTotalShells()
             reactant.enumerateCluster(self.MOLECULES) #Expand cluster (composed of moleucle indexes) into 2 parallel lists of atoms and molecules 
             reactant.createTypeMasks(self.ATOMTYPES)
             reactant.createRemainingMolMask()
 
-            if self.RUN_CONFIG.configExists('CONSERVE_COORDINATION'):
+            if self.CONFIG.configExists('CONSERVE_COORDINATION'):
                 self.resetCoordinationConservationDicts()
                 self.updateCoordinationConservationTargets(reactant.residue)
 
@@ -2280,22 +2278,22 @@ class system():
             LAST_SHELL_LIGANDS = None
             shell_index = 0
             shell_num = 1
-            outer_shell_num = shell_num-self.RUN_CONFIG.config['REACTION_SHELLS']
+            outer_shell_num = shell_num-self.CONFIG.config['REACTION_SHELLS']
 
             while CONTINUE:
                 #Calculate new solvation shell if requested
                 if FIND_COORDINATION is not None:
                     SHELL = self.clusterGraph(reactant,FIND_COORDINATION)
 
-                if self.RUN_CONFIG.configExists('CONSERVE_COORDINATION'):
+                if self.CONFIG.configExists('CONSERVE_COORDINATION'):
                     
-                    if (shell_num <= self.RUN_CONFIG.config['REACTION_SHELLS']):
+                    if (shell_num <= self.CONFIG.config['REACTION_SHELLS']):
                         #Update reactant with new shell
                         reactant.updateSolvationShells(shell_index,SHELL)
 
                         shell_list = np.array(list(SHELL))
                         shell_res_list = self.RESIDUES[shell_list]
-                        ligand_mask = np.isin(shell_res_list,list(self.RUN_CONFIG.config['CONSERVE_COORDINATION'].keys()))
+                        ligand_mask = np.isin(shell_res_list,list(self.CONFIG.config['CONSERVE_COORDINATION'].keys()))
                         ligands_res_list = shell_res_list[ligand_mask]
                         for l in ligands_res_list:
                             self.updateCoordinationConservationTargets(l)
@@ -2390,7 +2388,7 @@ class system():
                                 FIND_COORDINATION = EXTRACT_SHELL #H-Bond analysis will not work with the above code uncommented, does not find (outer shell) - (outer_shell) H-bonds                        case 4:
                         case 4:    
                             #Update reactant second outer shell
-                            reactant.updateSolvationShells(self.RUN_CONFIG.config['REACTION_SHELLS']+1,SHELL)
+                            reactant.updateSolvationShells(self.CONFIG.config['REACTION_SHELLS']+1,SHELL)
 
                             CONTINUE = False
                 else:
@@ -2401,7 +2399,7 @@ class system():
                         case 0: #The shell # is now equal to that requested --> determine reactant coordination
                             self.calculateCoordination(reactant)
                             if not finished_extracting:
-                                extractable_cluster = (reactant.coordination == self.RUN_CONFIG.config['REACTANT_TO_PRINT']) #self.REACTANT_TO_PRINT)
+                                extractable_cluster = (reactant.coordination == self.CONFIG.config['REACTANT_TO_PRINT']) #self.REACTANT_TO_PRINT)
                                 if extractable_cluster:
                                     self.REACTANTS_TO_WRITE_FOUND += 1
                                     time_to_extract = self.updateReactantExtractClock(reactant)
@@ -2429,9 +2427,9 @@ class system():
             if reactant.extract_shells is not None:
                 #reactant.extract_shells.update(set(mol_list_view))
                 self.countClusterWaterHBonds(reactant,extract_cluster=True)
-                if self.RUN_CONFIG.configExists('HBOND_TARGET'):
-                    hbonds_dev = reactant.extract_shells_hbonds - self.RUN_CONFIG.config['HBOND_TARGET']
-                    if abs(hbonds_dev) > self.RUN_CONFIG.config['HBOND_DEV']:
+                if self.CONFIG.configExists('HBOND_TARGET'):
+                    hbonds_dev = reactant.extract_shells_hbonds - self.CONFIG.config['HBOND_TARGET']
+                    if abs(hbonds_dev) > self.CONFIG.config['HBOND_DEV']:
                         if hbonds_dev > 0:
                             self.EXTRACT_FAIL_STATS['WRITE_FAILED_OVER_HBOND_COUNT'] += 1
                         else:
@@ -2439,9 +2437,9 @@ class system():
                         self.updateReactantExtractClock(reactant,zero=True)
                         reactant.extract_shells = None
                         return None
-                if self.RUN_CONFIG.configExists('SPECTATOR_TARGET'):
-                    spectator_devs = {ion:(reactant.outer_shell[ion] - self.RUN_CONFIG.config['SPECTATOR_TARGET'][ion]) for ion in self.RUN_CONFIG.config['SPECTATOR_TARGET'].keys()}
-                    if any([(abs(spectator_devs[ion]) > self.RUN_CONFIG.config['SPECTATOR_DEV'][ion]) for ion in self.RUN_CONFIG.config['SPECTATOR_DEV']]):
+                if self.CONFIG.configExists('SPECTATOR_TARGET'):
+                    spectator_devs = {ion:(reactant.outer_shell[ion] - self.CONFIG.config['SPECTATOR_TARGET'][ion]) for ion in self.CONFIG.config['SPECTATOR_TARGET'].keys()}
+                    if any([(abs(spectator_devs[ion]) > self.CONFIG.config['SPECTATOR_DEV'][ion]) for ion in self.CONFIG.config['SPECTATOR_DEV']]):
                         # if hbonds_dev > 0:
                         #     self.EXTRACT_FAIL_STATS['WRITE_FAILED_OVER_HBOND_COUNT'] += 1
                         # else:
@@ -2493,7 +2491,7 @@ class system():
                 hbond_count += sum(acceptor_mol_atom_tuple[0] in total_extract_shells for acceptor_set in molecule.atom_hbond_donation_atoms.values() for acceptor_mol_atom_tuple in acceptor_set)
                 #hbond_count += len(molecule.atom_hbond_donation_atoms & (reactant.extract_shells | reactant.index))
         else:
-            total_shell = {reactant.index} | {molecule_index for shell in reactant.solvation_shells[:self.RUN_CONFIG.config['REACTION_SHELLS']] + [ligand_outer_shells] for molecule_index in shell}
+            total_shell = {reactant.index} | {molecule_index for shell in reactant.solvation_shells[:self.CONFIG.config['REACTION_SHELLS']] + [ligand_outer_shells] for molecule_index in shell}
             for molecule_index in total_shell:
                 molecule = self.MOLECULES[molecule_index]
                 # if not molecule.atom_hbond_donation_atoms:
@@ -2504,7 +2502,7 @@ class system():
         reactant.extract_shells_hbonds = hbond_count
 
     def filterClusterZLocation(self,reactant_index):
-        for bound1,bound2 in self.RUN_CONFIG.config['FILTER_REACTANTS_BY_Z']:
+        for bound1,bound2 in self.CONFIG.config['FILTER_REACTANTS_BY_Z']:
             if bound1 < self.POINTPARTICLESZ[reactant_index] < bound2:
                 return True
         return False
@@ -2527,13 +2525,13 @@ class system():
                 if outer_mols:
                     for mol in outer_mols:
                         res = self.MOLECULES[mol].residue
-                        if res in self.RUN_CONFIG.config['RESIDUE_DIELECTRICS']:
-                            dielectrics.append(self.RUN_CONFIG.config['RESIDUE_DIELECTRICS'][res])
+                        if res in self.CONFIG.config['RESIDUE_DIELECTRICS']:
+                            dielectrics.append(self.CONFIG.config['RESIDUE_DIELECTRICS'][res])
                 else:
                     for mol in atom_coordination:
                         res = self.MOLECULES[mol].residue
-                        if res in self.RUN_CONFIG.config['RESIDUE_DIELECTRICS']:
-                            dielectrics.append(self.RUN_CONFIG.config['RESIDUE_DIELECTRICS'][res])
+                        if res in self.CONFIG.config['RESIDUE_DIELECTRICS']:
+                            dielectrics.append(self.CONFIG.config['RESIDUE_DIELECTRICS'][res])
 
                 if dielectrics != []:
                     self.ATOM_DIELECTRICS[atom_index] = max(dielectrics)
@@ -2567,14 +2565,14 @@ class system():
         graphCoord = []
 
         #Determine coordination from the residue types of the molecules in the reactants solvation shells
-        for shell_index,shell in enumerate(reactant.solvation_shells[:self.RUN_CONFIG.config['REACTION_SHELLS']]):
+        for shell_index,shell in enumerate(reactant.solvation_shells[:self.CONFIG.config['REACTION_SHELLS']]):
 
             coordination = {}
             coordination_for_graph = {}
 
             clusterResidues = self.RESIDUES[list(shell)]
 
-            for residue in self.RUN_CONFIG.config['RESIDUE_LIST']:
+            for residue in self.CONFIG.config['RESIDUE_LIST']:
                 res_num = sum(clusterResidues == residue)
                 coordination[residue] = res_num
                 coordination_for_graph[residue] = res_num
@@ -2582,8 +2580,8 @@ class system():
             reactant.coordination[shell_index] = coordination
             graphCoord.append(coordination_for_graph)
 
-        temp = self.GRAPH.rxnNode(configuration=self.RUN_CONFIG,solvation_shells=graphCoord)
-        if self.RUN_CONFIG.config['CREATE_RXN_GRAPH']:
+        temp = self.GRAPH.rxnNode(configuration=self.CONFIG,solvation_shells=graphCoord)
+        if self.CONFIG.config['CREATE_RXN_GRAPH']:
             reactant.current = self.GRAPH.updateGraph(temp, reactant.current)
         else:
             reactant.current = temp
@@ -2591,29 +2589,29 @@ class system():
     def calculateOuterCoordination(self,reactant:molecule,outer_shell:set):
 
         if outer_shell is None:
-            raise mySystemError('Unable to calculate outer shell coordination numbers: outer shell empty.')
+            raise mySystemError('Unable to calculate outer shell coordination numbers: outer shell empty')
 
         #Update the current reaction node outer shell averages using outer_shells_total:
         clusterResidues = self.RESIDUES[list(outer_shell)]
-        outer_shell_composition = {residue:sum(clusterResidues == residue) for residue in self.RUN_CONFIG.config['RESIDUE_LIST']}
+        outer_shell_composition = {residue:sum(clusterResidues == residue) for residue in self.CONFIG.config['RESIDUE_LIST']}
 
         #Temporary
-        reactant.outer_shell = {residue:sum(clusterResidues == residue) for residue in self.RUN_CONFIG.config['RESIDUE_LIST']}#sum([self.RUN_CONFIG.config['RESIDUE_CHARGES'][residue] * count for residue,count in outer_shell_composition.items()])
+        reactant.outer_shell = {residue:sum(clusterResidues == residue) for residue in self.CONFIG.config['RESIDUE_LIST']}#sum([self.CONFIG.config['RESIDUE_CHARGES'][residue] * count for residue,count in outer_shell_composition.items()])
 
         reactant.current.updateOuterShell(outer_shell_composition)
 
     def resetCoordinationConservationDicts(self):
         self.CURRENT_CONSERVED_RESIDUES_TARGETS = {}
         self.CURRENT_CONSERVED_RESIDUES_COUNTS = {}
-        for solvent in self.RUN_CONFIG.config['COARSEN_SOLVENT_RESIDUES']:
+        for solvent in self.CONFIG.config['COARSEN_SOLVENT_RESIDUES']:
             self.CURRENT_CONSERVED_RESIDUES_TARGETS[solvent] = 0
             self.CURRENT_CONSERVED_RESIDUES_COUNTS[solvent] = 0
 
     def updateCoordinationConservationTargets(self,specie_key:str):
         #Tally the number of residues requested to be conserved for this particular species
-        if self.RUN_CONFIG.config['CONSERVE_COORDINATION'][specie_key] is not None:
-            for conserved_res in self.RUN_CONFIG.config['CONSERVE_COORDINATION'][specie_key]:
-                self.CURRENT_CONSERVED_RESIDUES_TARGETS[conserved_res] += self.RUN_CONFIG.config['CONSERVE_COORDINATION'][specie_key][conserved_res]
+        if self.CONFIG.config['CONSERVE_COORDINATION'][specie_key] is not None:
+            for conserved_res in self.CONFIG.config['CONSERVE_COORDINATION'][specie_key]:
+                self.CURRENT_CONSERVED_RESIDUES_TARGETS[conserved_res] += self.CONFIG.config['CONSERVE_COORDINATION'][specie_key][conserved_res]
     
     def updateCoordinationConservationCounts(self,specie_key:str,found_count:int):
         #Update the residue counts for the current reactant
@@ -2641,11 +2639,11 @@ class system():
 
     def createExtractableCluster(self,reactant:molecule,shell_key:str='',shell:set=None):
 
-        #Uses self.RUN_CONFIG.configExists('CONSERVE_COORDINATION') (if it exists) to expand the coordination shells of the current reactant such that important ligands have 1st solvation shells with the aim of conserving a certain composition.
+        #Uses self.CONFIG.configExists('CONSERVE_COORDINATION') (if it exists) to expand the coordination shells of the current reactant such that important ligands have 1st solvation shells with the aim of conserving a certain composition.
         #Returns the expanded portion of the cluster (such that the first solvation shell(s) of this expanded portion may be found for QCHEM dielectric assignment)
         
         if shell_key not in ('inner','ligand_first','ligand_second','outer'):
-            print('WARNING: Calling createExtractableCluster() with invalid shell_key.')
+            self.CONFIG.STDOUT.write('WARNING: Calling createExtractableCluster() with invalid shell_key\n')
             return
 
         if reactant.extract_shells is None:
@@ -2656,7 +2654,7 @@ class system():
         else:
             NEW_SHELL = shell
         
-        if self.RUN_CONFIG.configExists('CONSERVE_COORDINATION'):                                                                                                  
+        if self.CONFIG.configExists('CONSERVE_COORDINATION'):                                                                                                  
 
             if shell_key == 'inner':
                 #For each residue whose composition must be conserved check for conservation
@@ -2728,7 +2726,7 @@ class system():
                             NEW_SHELL = NEW_SHELL - popped_set
         else:
             for shell in NEW_SHELL:
-                if any(np.isin(self.ATOMTYPES[list(shell)],self.RUN_CONFIG.config['EXCLUDE_SOLVENT_RESIDUES'])) > 0:
+                if any(np.isin(self.ATOMTYPES[list(shell)],self.CONFIG.config['EXCLUDE_SOLVENT_RESIDUES'])) > 0:
                     self.updateReactantExtractClock(reactant,zero=True)
                     self.calculateLocalPeakMemUse()
                     reactant.extract_shells = None
@@ -2736,7 +2734,7 @@ class system():
                     return None
 
         if isinstance(NEW_SHELL,list):
-            for shell in NEW_SHELL[:self.RUN_CONFIG.config['REACTION_SHELLS']]:
+            for shell in NEW_SHELL[:self.CONFIG.config['REACTION_SHELLS']]:
                 reactant.extract_shells.update(shell)
         elif isinstance(NEW_SHELL,set):
             reactant.extract_shells.update(NEW_SHELL)
@@ -2767,7 +2765,7 @@ class system():
 
         # write += f"[SOLVATION SHELLS]\n[Shell 0] {reactant_atoms}\n"
 
-        # for shell_index, shell in enumerate(reactant.solvation_shells[:self.RUN_CONFIG.config['REACTION_SHELLS']]):
+        # for shell_index, shell in enumerate(reactant.solvation_shells[:self.CONFIG.config['REACTION_SHELLS']]):
         #     write += f"[Shell {shell_index+1}] "
         #     for molecule_index in shell:
         #         molecule = self.MOLECULES[molecule_index]
@@ -2794,7 +2792,7 @@ class system():
             return
         
         #Overwrite graphOut to only show most recent reaction graph
-        self.graphOut = open(f"./{self.RUN_CONFIG.config['WRITE_DIRECTORY']}/{self.RUN_CONFIG.config['RUN_NAME']}/rxn_graph.{self.STEP}.txt",'w')
+        self.graphOut = open(f"./{self.CONFIG.config['WRITE_DIRECTORY']}/{self.CONFIG.config['RUN_NAME']}/rxn_graph.{self.STEP}.txt",'w')
         self.ALL_RANKS_GRAPH.writeWeights(self.graphOut, start=self.START_STEP, end=self.STEP)
         self.graphOut.flush()
 
@@ -2808,7 +2806,7 @@ class system():
         try:
             assert isinstance(xj_array,np.ndarray); isinstance(yj_array,np.ndarray); isinstance(zj_array,np.ndarray), "ERROR in allPBCDistance, recieved non ndarray"  
         except AssertionError:
-            raise mySystemError('allPBCDistance called using non numpy ndarray object.')
+            raise mySystemError('allPBCDistance called using non numpy ndarray object')
         
         try:
             assert xj_array.size == yj_array.size == zj_array.size, "ERROR in allPBCDistance, recieved arrays of unequal length"
@@ -2861,7 +2859,7 @@ class system():
         #fix
         if self.RANK == 0 and self.STEP >= 50:
     
-            self.graphOut = open('./' + self.RUN_CONFIG.config['WRITE_DIRECTORY'] + '/' + self.RUN_CONFIG.config['RUN_NAME'] + '/' +'rank_0_graph.txt','r')
+            self.graphOut = open('./' + self.CONFIG.config['WRITE_DIRECTORY'] + '/' + self.CONFIG.config['RUN_NAME'] + '/' +'rank_0_graph.txt','r')
 
             compare = open('./graph_save_Li.txt')
 
@@ -2883,10 +2881,10 @@ class system():
 
             if unexpected:
                 if self.RANK == 0:
-                    print("UNEXPECTED OUTPUT ENCOUNTERED",flush=True)
+                    self.CONFIG.STDOUT.write("UNEXPECTED OUTPUT ENCOUNTERED\n")
             else:
                 if self.RANK == 0:
-                    print("NO PROBLEMS ENCOUNTERED",flush=True)
+                    self.CONFIG.STDOUT.write("NO PROBLEMS ENCOUNTERED\n")
 
     def initLAMMPS(self):
 
@@ -2912,8 +2910,8 @@ class system():
 
         """
 
-        if not self.RUN_CONFIG.configExists('TOPOLOGY_FILE_PATH'):
-            print('WARNING: Bond parsing attempted without TOPOLOGY_FILE_PATH')
+        if not self.CONFIG.configExists('TOPOLOGY_FILE_PATH'):
+            self.CONFIG.STDOUT.write('WARNING: Bond parsing attempted without TOPOLOGY_FILE_PATH\n')
             return
 
         # 1. Parse the entire .top file to get molecule definitions
@@ -2973,29 +2971,29 @@ class system():
                     system_bonds.append((mol.atoms[bond[0]-1], mol.atoms[bond[1]-1]))
 
                 if len(mol_def['masses']) != len(mol.atoms):
-                    print('Warning: .top mass format does not match .gro format')
+                    self.CONFIG.STDOUT.write('Warning: .top mass format does not match .gro format\n')
                 else:
                     for mass in range(len(mol_def['masses'])):
                         new_masses[mol.atoms[mass]] = mol_def['masses'][mass]
             else:
-                print('Warning: Unrecognized .top molecule definition encountered')
+                self.CONFIG.STDOUT.write('Warning: Unrecognized .top molecule definition encountered\n')
 
         # 3. Add bonds and masses to the MDAnalysis Universe
         if not system_bonds:
             if self.RANK == 0:
-                print("Warning: No bonds found or added.. check .top or .gro")
+                self.CONFIG.STDOUT.write('Warning: No bonds found or added.. check .top or .gro\n')
         else:
             self.UNIVERSE.add_bonds(system_bonds)
             if self.RANK == 0:
-                print(f"Successfully added {len(system_bonds)} bonds to system from {self.RUN_CONFIG.config['TOPOLOGY_FILE_PATH']}")
+                self.CONFIG.STDOUT.write(f"Successfully added {len(system_bonds)} bonds to system from {self.CONFIG.config['TOPOLOGY_FILE_PATH']}\n")
         
         if not np.all(new_masses):
             if self.RANK ==0:
-                print("Warning: Some atoms have zero mass")
+                self.CONFIG.STDOUT.write('Warning: Some atoms have zero mass\n')
         else:
             self.UNIVERSE.atoms.masses = new_masses
             if self.RANK == 0:
-                print(f"Successfully added masses to system from {self.RUN_CONFIG.config['TOPOLOGY_FILE_PATH']}")
+                self.CONFIG.STDOUT.write(f"Successfully added masses to system from {self.CONFIG.config['TOPOLOGY_FILE_PATH']}\n")
 
     def loadXTCGuarded(self):
 
@@ -3005,18 +3003,18 @@ class system():
         #Rank 0 creates universe first to generate index file and prevent file writing race conditions
         if self.RANK == 0:
             
-            print(f"Loading {self.RUN_CONFIG.config['TRJ_FILE_PATH']}",flush=True)
+            self.CONFIG.STDOUT.write(f"Loading {self.CONFIG.config['TRJ_FILE_PATH']}\n")
             import warnings
             warnings.filterwarnings('ignore', category=UserWarning, module='MDAnalysis.topology.guessers')
-            self.UNIVERSE = mda.Universe(self.RUN_CONFIG.config['DATA_FILE_PATH'],self.RUN_CONFIG.config['TRJ_FILE_PATH'])
+            self.UNIVERSE = mda.Universe(self.CONFIG.config['DATA_FILE_PATH'],self.CONFIG.config['TRJ_FILE_PATH'])
 
         #Synchronize all processes
         self.COMM.Barrier()
 
         if self.RANK != 0:
-            self.UNIVERSE = mda.Universe(self.RUN_CONFIG.config['DATA_FILE_PATH'],self.RUN_CONFIG.config['TRJ_FILE_PATH'])
+            self.UNIVERSE = mda.Universe(self.CONFIG.config['DATA_FILE_PATH'],self.CONFIG.config['TRJ_FILE_PATH'])
 
-        if isinstance(self.RUN_CONFIG.config['FRAMES_TO_PROCESS'],tuple):
+        if isinstance(self.CONFIG.config['FRAMES_TO_PROCESS'],tuple):
             self.UNIVERSE.trajectory
 
         self.COMM.Barrier()
@@ -3030,7 +3028,7 @@ class system():
 
             run_time = check_time - self.START_TIME
 
-            self.PROCESSING_RATE = round((((self.STEP+1)*self.RUN_CONFIG.config['DUMP_FREQ']/1000000)/(run_time/86400)),3)
+            self.PROCESSING_RATE = round((((self.STEP+1)*self.CONFIG.config['DUMP_FREQ']/1000000)/(run_time/86400)),3)
 
     def calculateLocalPeakMemUse(self,reset=False):
         if reset:
@@ -3048,18 +3046,18 @@ class system():
 
     def printProgress(self):
         if self.RANK == 0:
-            if self.RUN_CONFIG.configExists('CONSERVE_COORDINATION'):
-                #print(f'FRAMES ANALYZED: {self.STEP}    CLUSTERS EXTRACTED: {self.TOTAL_CLUSTERS_WRITTEN}/{self.TOTAL_CLUSTERS_TO_EXTRACT}, {self.TOTAL_REACTANTS_TO_WRITE_FOUND-self.TOTAL_CLUSTERS_WRITTEN} failed: {self.EXTRACT_FAIL_STATS['TOTAL_WRITE_FAILED_OVER_EXTRACT_FREQ']}/{self.EXTRACT_FAIL_STATS['TOTAL_WRITE_FAILED_INNER_NONCONSERVE']}/{self.EXTRACT_FAIL_STATS['TOTAL_WRITE_FAILED_FIRSTOUTER_NONCONSERVE']}/{self.EXTRACT_FAIL_STATS['TOTAL_WRITE_FAILED_FIRSTOUTER_NONSOLVENT']}/{self.EXTRACT_FAIL_STATS['TOTAL_WRITE_FAILED_SECONDOUTER_UNDERCOORD']}    PROCESSING RATE: {self.PROCESSING_RATE} ns/day    PEAK MEMORY USE: {self.PEAK_MEMORY_USE} GB',flush=True)
-                print(f"FRAME: {self.STEP} (0 indexed)    EXTRACTED: {self.TOTAL_CLUSTERS_WRITTEN}/{self.TOTAL_CLUSTERS_TO_EXTRACT}, {self.TOTAL_REACTANTS_TO_WRITE_FOUND-self.TOTAL_CLUSTERS_WRITTEN} failed: {self.EXTRACT_FAIL_STATS['TOTAL_WRITE_FAILED_INNER_NONCONSERVE']}/{self.EXTRACT_FAIL_STATS['TOTAL_WRITE_FAILED_FIRSTOUTER_NONCONSERVE']}/{self.EXTRACT_FAIL_STATS['TOTAL_WRITE_FAILED_SECONDOUTER_UNDERCOORD']}    RATE: {self.PROCESSING_RATE} ns/day    PEAK MEM: {self.PEAK_MEMORY_USE} GB",flush=True)
+            if self.CONFIG.configExists('CONSERVE_COORDINATION'):
+                #self.CONFIG.STDOUT.write(f'FRAMES ANALYZED: {self.STEP}    CLUSTERS EXTRACTED: {self.TOTAL_CLUSTERS_WRITTEN}/{self.TOTAL_CLUSTERS_TO_EXTRACT}, {self.TOTAL_REACTANTS_TO_WRITE_FOUND-self.TOTAL_CLUSTERS_WRITTEN} failed: {self.EXTRACT_FAIL_STATS['TOTAL_WRITE_FAILED_OVER_EXTRACT_FREQ']}/{self.EXTRACT_FAIL_STATS['TOTAL_WRITE_FAILED_INNER_NONCONSERVE']}/{self.EXTRACT_FAIL_STATS['TOTAL_WRITE_FAILED_FIRSTOUTER_NONCONSERVE']}/{self.EXTRACT_FAIL_STATS['TOTAL_WRITE_FAILED_FIRSTOUTER_NONSOLVENT']}/{self.EXTRACT_FAIL_STATS['TOTAL_WRITE_FAILED_SECONDOUTER_UNDERCOORD']}    PROCESSING RATE: {self.PROCESSING_RATE} ns/day    PEAK MEMORY USE: {self.PEAK_MEMORY_USE} GB\n')
+                self.CONFIG.STDOUT.write(f"FRAME: {self.STEP} (0 indexed)    EXTRACTED: {self.TOTAL_CLUSTERS_WRITTEN}/{self.TOTAL_CLUSTERS_TO_EXTRACT}, {self.TOTAL_REACTANTS_TO_WRITE_FOUND-self.TOTAL_CLUSTERS_WRITTEN} failed: {self.EXTRACT_FAIL_STATS['TOTAL_WRITE_FAILED_INNER_NONCONSERVE']}/{self.EXTRACT_FAIL_STATS['TOTAL_WRITE_FAILED_FIRSTOUTER_NONCONSERVE']}/{self.EXTRACT_FAIL_STATS['TOTAL_WRITE_FAILED_SECONDOUTER_UNDERCOORD']}    RATE: {self.PROCESSING_RATE} ns/day    PEAK MEM: {self.PEAK_MEMORY_USE} GB\n")
             else:
-                print(f"FRAMES ANALYZED: {self.STEP} (0 indexed)    CLUSTERS EXTRACTED: {self.TOTAL_CLUSTERS_WRITTEN}/{self.TOTAL_CLUSTERS_TO_EXTRACT}, {self.TOTAL_REACTANTS_TO_WRITE_FOUND-self.TOTAL_CLUSTERS_WRITTEN} failed: {self.EXTRACT_FAIL_STATS['TOTAL_WRITE_FAILED_OVER_EXTRACT_FREQ']}/{self.EXTRACT_FAIL_STATS['TOTAL_WRITE_FAILED_INNER_EXCLUDE_RES']}    PROCESSING RATE: {self.PROCESSING_RATE} ns/day    PEAK MEMORY USE: {self.PEAK_MEMORY_USE} GB",flush=True)
+                self.CONFIG.STDOUT.write(f"FRAMES ANALYZED: {self.STEP} (0 indexed)    CLUSTERS EXTRACTED: {self.TOTAL_CLUSTERS_WRITTEN}/{self.TOTAL_CLUSTERS_TO_EXTRACT}, {self.TOTAL_REACTANTS_TO_WRITE_FOUND-self.TOTAL_CLUSTERS_WRITTEN} failed: {self.EXTRACT_FAIL_STATS['TOTAL_WRITE_FAILED_OVER_EXTRACT_FREQ']}/{self.EXTRACT_FAIL_STATS['TOTAL_WRITE_FAILED_INNER_EXCLUDE_RES']}    PROCESSING RATE: {self.PROCESSING_RATE} ns/day    PEAK MEMORY USE: {self.PEAK_MEMORY_USE} GB\n")
 
     def run(self):
 
-        if self.RUN_CONFIG.config['SYSTEM_TYPE'] == 'lammps':
+        if self.CONFIG.config['SYSTEM_TYPE'] == 'lammps':
             self.readFrameLAMMPS()
             self.wrapMoleculesWrapperLAMMPS()
-        elif self.RUN_CONFIG.config['SYSTEM_TYPE'] == 'gromacs':
+        elif self.CONFIG.config['SYSTEM_TYPE'] == 'gromacs':
             self.readFrameGROMACS()
 
         while self.PASS:
@@ -3069,7 +3067,7 @@ class system():
 
             self.reactantClustersWrapper()
             self.reactantGraph()
-            if (self.STEP * self.RUN_CONFIG.config['DUMP_FREQ'] % self.GRAPH_WRITE_TIMESTEP) == 0 and self.STEP != 0 and self.RUN_CONFIG.config['CREATE_RXN_GRAPH']:
+            if (self.STEP * self.CONFIG.config['DUMP_FREQ'] % self.GRAPH_WRITE_TIMESTEP) == 0 and self.STEP != 0 and self.CONFIG.config['CREATE_RXN_GRAPH']:
                 self.writeRxnNetwork()
             self.extractReactantClusters()
             self.gatherClusterExtractionStats()
@@ -3079,13 +3077,13 @@ class system():
 
             self.printProgress()
 
-            if not self.RUN_CONFIG.config['CREATE_RXN_GRAPH'] and self.allRankClustersExtracted():
+            if not self.CONFIG.config['CREATE_RXN_GRAPH'] and self.allRankClustersExtracted():
                 self.PASS = False
             else:
-                if self.RUN_CONFIG.config['SYSTEM_TYPE'] == 'lammps':
+                if self.CONFIG.config['SYSTEM_TYPE'] == 'lammps':
                     self.readFrameLAMMPS()
                     self.wrapMoleculesWrapperLAMMPS()
-                elif self.RUN_CONFIG.config['SYSTEM_TYPE'] == 'gromacs':
+                elif self.CONFIG.config['SYSTEM_TYPE'] == 'gromacs':
                     self.readFrameGROMACS()
 
     def initialize(self):
@@ -3095,11 +3093,11 @@ class system():
         for param in first_check_params:
             self.checkConfiguration(param)
 
-        if self.RUN_CONFIG.config['SYSTEM_TYPE'] == 'lammps':
+        if self.CONFIG.config['SYSTEM_TYPE'] == 'lammps':
 
             self.initLAMMPS()
 
-        elif self.RUN_CONFIG.config['SYSTEM_TYPE'] == 'gromacs':
+        elif self.CONFIG.config['SYSTEM_TYPE'] == 'gromacs':
         
             self.initGROMACS()
 
@@ -3121,7 +3119,7 @@ class system():
 
     def finallize(self):
 
-        if self.RUN_CONFIG.config['CREATE_RXN_GRAPH']:
+        if self.CONFIG.config['CREATE_RXN_GRAPH']:
             self.writeRxnNetwork()
         
         #self.outputCheck() #temporary
@@ -3134,9 +3132,9 @@ class system():
 
         if self.RANK == 0:
 
-            xyz = open('./' + self.RUN_CONFIG.config['WRITE_DIRECTORY'] + '/' + self.RUN_CONFIG.config['RUN_NAME'] + '/box.xyz','w')
+            xyz = open('./' + self.CONFIG.config['WRITE_DIRECTORY'] + '/' + self.CONFIG.config['RUN_NAME'] + '/box.xyz','w')
 
-            xyz.write(str(self.NUM_ATOMS) + '\n' + 'Current XYZ for project: ' + self.RUN_CONFIG.config['REACTANT'] + '\n')
+            xyz.write(str(self.NUM_ATOMS) + '\n' + 'Current XYZ for project: ' + self.CONFIG.config['REACTANT'] + '\n')
 
             for mol in self.MOLECULES:
 
@@ -3145,13 +3143,13 @@ class system():
                     # if self.ATOMTYPES[atom] in self.ELEMENTS:
                     #     xyz.write(str(self.ATOMTYPES[atom]) + " " + str(self.X[atom]) + " " + str(self.Y[atom]) + " " + str(self.Z[atom]) + '\n')
                     # elif len(str(self.ATOMTYPES[atom])) == 1:
-                    #     print("ERROR: Unable to convert atom-type label to element symbol",flush=True)
+                    #     self.CONFIG.STDOUT.write("ERROR: Unable to convert atom-type label to element symbol\n")
                     # elif self.ATOMTYPES[atom][:2] in self.ELEMENTS:
                     #     xyz.write(str(self.ATOMTYPES[atom][:2]) + " " + str(self.X[atom]) + " " + str(self.Y[atom]) + " " + str(self.Z[atom]) + '\n')
                     # elif self.ATOMTYPES[atom][:1] in self.ELEMENTS:
                     #     xyz.write(str(self.ATOMTYPES[atom][:1]) + " " + str(self.X[atom]) + " " + str(self.Y[atom]) + " " + str(self.Z[atom]) + '\n')
                     # else:
-                    #     print("ERROR: Unable to convert atom-type label to element symbol",flush=True)
+                    #     self.CONFIG.STDOUT.write("ERROR: Unable to convert atom-type label to element symbol\n")
 
                     xyz.write(str(self.ELEMENTSYMBOLS[atom]) + " " + str(self.X[atom]) + " " + str(self.Y[atom]) + " " + str(self.Z[atom]) + '\n')
 
@@ -3159,7 +3157,7 @@ class system():
 
     def writeSolvationShellsToXYZ(self,reactant:molecule):
 
-        xyz = open(f"./{self.RUN_CONFIG.config['WRITE_DIRECTORY']}/{self.RUN_CONFIG.config['RUN_NAME']}/solvation_shell_{reactant.index}_{self.TIMESTEP}.xyz",'w')
+        xyz = open(f"./{self.CONFIG.config['WRITE_DIRECTORY']}/{self.CONFIG.config['RUN_NAME']}/solvation_shell_{reactant.index}_{self.TIMESTEP}.xyz",'w')
 
         atom_num = 0
         write = ''
@@ -3169,13 +3167,13 @@ class system():
             # if self.ATOMTYPES[j] in self.ELEMENTS:
             #     write += (str(self.ATOMTYPES[j]) + " " + str(self.X[j]) + " " + str(self.Y[j]) + " " + str(self.Z[j]) + '\n')
             # elif len(str(self.ATOMTYPES[j])) == 1:
-            #     print("ERROR: Unable to convert atom-type label to element symbol",flush=True)
+            #     self.CONFIG.STDOUT.write("ERROR: Unable to convert atom-type label to element symbol\n")
             # elif self.ATOMTYPES[j][:2] in self.ELEMENTS:
             #     write += (str(self.ATOMTYPES[j][:2]) + " " + str(self.X[j]) + " " + str(self.Y[j]) + " " + str(self.Z[j]) + '\n')
             # elif self.ATOMTYPES[j][:1] in self.ELEMENTS:
             #     write += (str(self.ATOMTYPES[j][:1]) + " " + str(self.X[j]) + " " + str(self.Y[j]) + " " + str(self.Z[j]) + '\n')
             # else:
-            #     print("ERROR: Unable to convert atom-type label to element symbol",flush=True)
+            #     self.CONFIG.STDOUT.write("ERROR: Unable to convert atom-type label to element symbol\n")
 
             write += (str(self.ELEMENTSYMBOLS[j][:1]) + " " + str(self.X[j]) + " " + str(self.Y[j]) + " " + str(self.Z[j]) + '\n')
 
@@ -3193,13 +3191,13 @@ class system():
                     # if self.ATOMTYPES[atom] in self.ELEMENTS:
                     #     write += (str(self.ATOMTYPES[atom]) + " " + str(refX+relativeX) + " " + str(refY+relativeY) + " " + str(refZ+relativeZ) + '\n')
                     # elif len(str(self.ATOMTYPES[atom])) == 1:
-                    #     print("ERROR: Unable to convert atom-type label to element symbol",flush=True)
+                    #     self.CONFIG.STDOUT.write("ERROR: Unable to convert atom-type label to element symbol\n")
                     # elif self.ATOMTYPES[atom][:2] in self.ELEMENTS:
                     #     write += (str(self.ATOMTYPES[atom][:2]) + " " + str(refX+relativeX) + " " + str(refY+relativeY) + " " + str(refZ+relativeZ) + '\n')
                     # elif self.ATOMTYPES[atom][:1] in self.ELEMENTS:
                     #     write += (str(self.ATOMTYPES[atom][:1]) + " " + str(refX+relativeX) + " " + str(refY+relativeY) + " " + str(refZ+relativeZ) + '\n')
                     # else:
-                    #     print("ERROR: Unable to convert atom-type label to element symbol, skipping...",flush=True)
+                    #     self.CONFIG.STDOUT.write("ERROR: Unable to convert atom-type label to element symbol, skipping...\n")
 
                     write += (str(self.ELEMENTSYMBOLS[atom][:1]) + " " + str(refX+relativeX) + " " + str(refY+relativeY) + " " + str(refZ+relativeZ) + '\n')
 
@@ -3209,7 +3207,7 @@ class system():
 
     def writeClusterToXYZ(self,reactant:molecule):
 
-        xyz = open(f"./{self.RUN_CONFIG.config['WRITE_DIRECTORY']}/{self.RUN_CONFIG.config['RUN_NAME']}/cluster_{reactant.index}_{self.TIMESTEP}.xyz",'w')
+        xyz = open(f"./{self.CONFIG.config['WRITE_DIRECTORY']}/{self.CONFIG.config['RUN_NAME']}/cluster_{reactant.index}_{self.TIMESTEP}.xyz",'w')
 
         atom_num = 0
         write = ''
@@ -3235,7 +3233,7 @@ class system():
 
     def writeAllClustersToXYZ(self):
 
-        xyz = open(f"./{self.RUN_CONFIG.config['WRITE_DIRECTORY']}/{self.RUN_CONFIG.config['RUN_NAME']}/all_clusters_{self.TIMESTEP}.xyz",'w')
+        xyz = open(f"./{self.CONFIG.config['WRITE_DIRECTORY']}/{self.CONFIG.config['RUN_NAME']}/all_clusters_{self.TIMESTEP}.xyz",'w')
 
         atom_num = 0
         write = ''
@@ -3249,13 +3247,13 @@ class system():
                 # if self.ATOMTYPES[j] in self.ELEMENTS:
                 #     write += (str(self.ATOMTYPES[j]) + " " + str(self.X[j]) + " " + str(self.Y[j]) + " " + str(self.Z[j]) + '\n')
                 # elif len(str(self.ATOMTYPES[j])) == 1:
-                #     print("ERROR: Unable to convert atom-type label to element symbol",flush=True)
+                #     self.CONFIG.STDOUT.write("ERROR: Unable to convert atom-type label to element symbol\n")
                 # elif self.ATOMTYPES[j][:2] in self.ELEMENTS:
                 #     write += (str(self.ATOMTYPES[j][:2]) + " " + str(self.X[j]) + " " + str(self.Y[j]) + " " + str(self.Z[j]) + '\n')
                 # elif self.ATOMTYPES[j][:1] in self.ELEMENTS:
                 #     write += (str(self.ATOMTYPES[j][:1]) + " " + str(self.X[j]) + " " + str(self.Y[j]) + " " + str(self.Z[j]) + '\n')
                 # else:
-                #     print("ERROR: Unable to convert atom-type label to element symbol",flush=True)
+                #     self.CONFIG.STDOUT.write("ERROR: Unable to convert atom-type label to element symbol\n")
 
                 write += (str(self.ELEMENTSYMBOLS[j][:1]) + " " + str(self.X[j]) + " " + str(self.Y[j]) + " " + str(self.Z[j]) + '\n')
 
@@ -3272,13 +3270,13 @@ class system():
                     # if self.ATOMTYPES[atom] in self.ELEMENTS:
                     #     write += (str(self.ATOMTYPES[atom]) + " " + str(refX+relativeX) + " " + str(refY+relativeY) + " " + str(refZ+relativeZ) + '\n')
                     # elif len(str(self.ATOMTYPES[atom])) == 1:
-                    #     print("ERROR: Unable to convert atom-type label to element symbol",flush=True)
+                    #     self.CONFIG.STDOUT.write("ERROR: Unable to convert atom-type label to element symbol\n")
                     # elif self.ATOMTYPES[atom][:2] in self.ELEMENTS:
                     #     write += (str(self.ATOMTYPES[atom][:2]) + " " + str(refX+relativeX) + " " + str(refY+relativeY) + " " + str(refZ+relativeZ) + '\n')
                     # elif self.ATOMTYPES[atom][:1] in self.ELEMENTS:
                     #     write += (str(self.ATOMTYPES[atom][:1]) + " " + str(refX+relativeX) + " " + str(refY+relativeY) + " " + str(refZ+relativeZ) + '\n')
                     # else:
-                    #     print("ERROR: Unable to convert atom-type label to element symbol, skipping...",flush=True)
+                    #     self.CONFIG.STDOUT.write("ERROR: Unable to convert atom-type label to element symbol, skipping...\n")
 
                     write += (str(self.ELEMENTSYMBOLS[j][:1]) + " " + str(self.X[j]) + " " + str(self.Y[j]) + " " + str(self.Z[j]) + '\n')
 
@@ -3349,15 +3347,15 @@ class system():
                 node_contents2.append(residue_dict)
                 solvent_range2.append(solvent_ranges)
 
-            node1 = rxnGraph.rxnNode(configuration=self.RUN_CONFIG,solvation_shells=node_contents1,sol_counts=solvent_range1)
-            node2 = rxnGraph.rxnNode(configuration=self.RUN_CONFIG,solvation_shells=node_contents2,sol_counts=solvent_range2)
+            node1 = rxnGraph.rxnNode(configuration=self.CONFIG,solvation_shells=node_contents1,sol_counts=solvent_range1)
+            node2 = rxnGraph.rxnNode(configuration=self.CONFIG,solvation_shells=node_contents2,sol_counts=solvent_range2)
 
             return node1,node2,bidirectional
         
-        TEMP = rxnGraph(self.RUN_CONFIG)
+        TEMP = rxnGraph(self.CONFIG)
 
         for rank in range(0,self.NP):
-            fileName = ''.join(['./',str(self.RUN_CONFIG.config['WRITE_DIRECTORY']),'/',str(self.RUN_CONFIG.config['RUN_NAME']),'/rank_',str(rank),'_graph.txt'])
+            fileName = ''.join(['./',str(self.CONFIG.config['WRITE_DIRECTORY']),'/',str(self.CONFIG.config['RUN_NAME']),'/rank_',str(rank),'_graph.txt'])
 
             graphIn = open(fileName,'r')
             
@@ -3368,14 +3366,14 @@ class system():
                 reactant,product,bidirectional = parseEdgeLine(line)
 
                 if not reactant or not product:
-                    raise mySystemError(f'graphAggregateIO failed to parse graph line in {fileName}.')
+                    raise mySystemError(f'graphAggregateIO failed to parse graph line in {fileName}')
                 
                 if (reactant == product):
-                    raise mySystemError(f'graphAggregateIO encoutered self-referencing graph edge.')
+                    raise mySystemError(f'graphAggregateIO encoutered self-referencing graph edge')
 
                 TEMP.addEdge(reactant,product,bidirectional)
 
-        self.graphOut = open('./' + self.RUN_CONFIG.config['WRITE_DIRECTORY'] + '/' + self.RUN_CONFIG.config['RUN_NAME'] + '/full_graph.txt','w')
+        self.graphOut = open('./' + self.CONFIG.config['WRITE_DIRECTORY'] + '/' + self.CONFIG.config['RUN_NAME'] + '/full_graph.txt','w')
         TEMP.writeRxnGraph(self.graphOut, self.TIMESTEP)
         self.graphOut.flush()
 
@@ -3399,19 +3397,19 @@ class system():
 
         if self.RANK == 0:
             #Clear all-rank graph object
-            self.ALL_RANKS_GRAPH = rxnGraph(self.RUN_CONFIG)
+            self.ALL_RANKS_GRAPH = rxnGraph(self.CONFIG)
 
-            all_res_keys_sorted = sorted(set(self.RUN_CONFIG.config['RESIDUE_LIST'].keys()))
-            res_keys_sorted = sorted(set(self.RUN_CONFIG.config['RESIDUE_LIST'].keys()) - (set() if not self.RUN_CONFIG.configExists('COARSEN_SOLVENT_RESIDUES') else set(self.RUN_CONFIG.config['COARSEN_SOLVENT_RESIDUES'])))
-            solvent_keys_sorted = sorted((set() if not self.RUN_CONFIG.configExists('COARSEN_SOLVENT_RESIDUES') else set(self.RUN_CONFIG.config['COARSEN_SOLVENT_RESIDUES'])))
+            all_res_keys_sorted = sorted(set(self.CONFIG.config['RESIDUE_LIST'].keys()))
+            res_keys_sorted = sorted(set(self.CONFIG.config['RESIDUE_LIST'].keys()) - (set() if not self.CONFIG.configExists('COARSEN_SOLVENT_RESIDUES') else set(self.CONFIG.config['COARSEN_SOLVENT_RESIDUES'])))
+            solvent_keys_sorted = sorted((set() if not self.CONFIG.configExists('COARSEN_SOLVENT_RESIDUES') else set(self.CONFIG.config['COARSEN_SOLVENT_RESIDUES'])))
             
             all_res_len = len(all_res_keys_sorted)
             res_len = len(res_keys_sorted)
             sol_len = len(solvent_keys_sorted)
-            num_shells = self.RUN_CONFIG.config['REACTION_SHELLS']
+            num_shells = self.CONFIG.config['REACTION_SHELLS']
             shell_len = res_len + sol_len
             if all_res_len != shell_len:
-                raise mySystemError('Graph unpacking chunk size issue, check residue list.')
+                raise mySystemError('Graph unpacking chunk size issue, check residue list')
             current = 0
 
             metrics = all_graph_size_metrics.reshape(-1, 2)
@@ -3425,9 +3423,9 @@ class system():
                 rank_data = ALL_RANKS_DATA[current : current + rank_data_size]
                 
                 node_data_end = rank_graph_len * num_shells * shell_len
-                if self.RUN_CONFIG.configExists('COARSEN_SOLVENT_RESIDUES'):
+                if self.CONFIG.configExists('COARSEN_SOLVENT_RESIDUES'):
                     node_data_end += rank_graph_len * shell_len
-                if self.RUN_CONFIG.configExists('COARSEN_SOLVENT_RESIDUES'):
+                if self.CONFIG.configExists('COARSEN_SOLVENT_RESIDUES'):
                     node_block = rank_data[:node_data_end].reshape(rank_graph_len, num_shells+1, shell_len)
                 else:
                     node_block = rank_data[:node_data_end].reshape(rank_graph_len, num_shells, shell_len)
@@ -3448,11 +3446,11 @@ class system():
                         shell_residues.append(dict(zip(res_keys_sorted, shell_data[:res_len])))
                         shell_solvents.append(dict(zip(solvent_keys_sorted, shell_data[res_len:])))
 
-                    if self.RUN_CONFIG.configExists('COARSEN_SOLVENT_RESIDUES'):
+                    if self.CONFIG.configExists('COARSEN_SOLVENT_RESIDUES'):
                         outer_shell_data = node_block[node_index, num_shells]
                         outer_shell = dict(zip(all_res_keys_sorted, outer_shell_data))
                     
-                    newNode = self.ALL_RANKS_GRAPH.rxnNode(self.RUN_CONFIG,shell_residues, shell_solvents, outer_shell)
+                    newNode = self.ALL_RANKS_GRAPH.rxnNode(self.CONFIG,shell_residues, shell_solvents, outer_shell)
 
                     newNodeWeight = weights_block[node_index]
 
@@ -3468,7 +3466,7 @@ class system():
                 current += rank_data_size
 
     def debugCoordinationShells(self,reactant):
-        outfile = open(f"./{self.RUN_CONFIG.config['WRITE_DIRECTORY']}/{self.RUN_CONFIG.config['RUN_NAME']}/{reactant.index}_{self.STEP}_debug.txt", "w")
+        outfile = open(f"./{self.CONFIG.config['WRITE_DIRECTORY']}/{self.CONFIG.config['RUN_NAME']}/{reactant.index}_{self.STEP}_debug.txt", "w")
 
         outfile.write(f"{self.clusterFileHeader(reactant)}\n")
 
@@ -3497,7 +3495,7 @@ class system():
                 if type_key in self.CUTOFF_TARGETS:
                     for target_t in self.CUTOFF_TARGETS[type_key]:
                         if target_t in cluster_types:
-                            write += f"(type {target_t} and within {self.RUN_CONFIG.config['PAIR_CUTOFFS'][(type_key,target_t)]} of index {' '.join(map(str,atom_list))}) or "
+                            write += f"(type {target_t} and within {self.CONFIG.config['PAIR_CUTOFFS'][(type_key,target_t)]} of index {' '.join(map(str,atom_list))}) or "
             outfile.write(write[:-4])
             outfile.write('\n')
 
@@ -3557,16 +3555,16 @@ class system():
             raise configurationError(f"Error: File not found: {graph_file_name}")
 
         if self.RANK == 0:
-            print(f"Reading reaction graph file ...",flush=True)
+            self.CONFIG.STDOUT.write(f"Reading reaction graph file ...\n")
 
         ligands,solvents = extractResidues(graph_file_name)
         all_residues = ligands | solvents
-        self.RUN_CONFIG.config['RESIDUE_LIST'] = {res:[] for res in all_residues}
+        self.CONFIG.config['RESIDUE_LIST'] = {res:[] for res in all_residues}
         self.checkConfiguration('COORD_NUM_RESIDUE')
         self.checkConfiguration('K_LIGAND')
         self.checkConfiguration('K_LIGAND_CONC')
         self.checkConfiguration('VIS_SUB_GRAPH_SIZE')
-        self.RUN_CONFIG.config['COARSEN_SOLVENT_RESIDUES'] = solvents
+        self.CONFIG.config['COARSEN_SOLVENT_RESIDUES'] = solvents
 
         lines = graph_file.readlines()
 
@@ -3575,19 +3573,19 @@ class system():
 
         while 'REACTION NODES' not in lines[line_index]:
             if line_index+1 == file_len:
-                raise mySystemError(f"Unable to parse node section from reaction graph file.")
+                raise mySystemError(f"Unable to parse node section from reaction graph file")
             line_index += 1
         line_index += 9
         nodes_header = lines[line_index]
         if '[Shell 1]' not in nodes_header and '[Probability]' not in nodes_header:
-            raise mySystemError(f"Unable to parse node section from reaction graph file.")
+            raise mySystemError(f"Unable to parse node section from reaction graph file")
         
         data_blocks = parseDataBlocks(nodes_header)
         num_shells = len(data_blocks) - 2
-        self.RUN_CONFIG.config['REACTION_SHELLS'] = num_shells
+        self.CONFIG.config['REACTION_SHELLS'] = num_shells
         if '[Outer shell]' in nodes_header:
-            self.RUN_CONFIG.config['CONSERVE_COORDINATION'] = True
-            self.RUN_CONFIG.config['REACTION_SHELLS'] = len(data_blocks) - 3
+            self.CONFIG.config['CONSERVE_COORDINATION'] = True
+            self.CONFIG.config['REACTION_SHELLS'] = len(data_blocks) - 3
 
         line_index += 2
 
@@ -3600,19 +3598,19 @@ class system():
 
             shell_list = [line[block_width:data_blocks[index+1]] if index < num_shells else line[block_width:] for index,block_width in enumerate(data_blocks[:-1])]
 
-            node = self.GRAPH.rxnNode(self.RUN_CONFIG,nodeStringList=shell_list)
+            node = self.GRAPH.rxnNode(self.CONFIG,nodeStringList=shell_list)
             
             self.GRAPH.updateGraphFromExistingNode(newNode=node)
 
             if line_index == file_len:
-                raise mySystemError(f"Unable to parse edge section from reaction graph file.")
+                raise mySystemError(f"Unable to parse edge section from reaction graph file")
             
             line_index += 1
         
         line_index += 9
         edges_header = lines[line_index]
         if '[Shell 1]' not in lines[line_index] and '[Probability]' not in edges_header:
-            raise mySystemError(f"Unable to parse edge section from reaction graph file.")
+            raise mySystemError(f"Unable to parse edge section from reaction graph file")
 
         WEIGHT_PATTERN = r'\((\d+)\)'
         data_blocks = parseDataBlocks(edges_header)
@@ -3640,47 +3638,47 @@ class system():
                 raise mySystemError(f"Unable to parse node weight section of reaction graph file line: {''.join(shell_list)}")
             edge_weight = int(weight_match[0])
 
-            node1 = self.GRAPH.rxnNode(self.RUN_CONFIG,nodeStringList=node1_list)
-            node2 = self.GRAPH.rxnNode(self.RUN_CONFIG,nodeStringList=node2_list)
+            node1 = self.GRAPH.rxnNode(self.CONFIG,nodeStringList=node1_list)
+            node2 = self.GRAPH.rxnNode(self.CONFIG,nodeStringList=node2_list)
             self.GRAPH.updateGraphFromExistingEdge(From=node1,To=node2,weight=edge_weight)
 
             line_index += 1
 
         if self.RANK == 0:
-            print('\n')
+            self.CONFIG.STDOUT.write('\n')
 
     def graphAnalysis(self):
         
-        if self.RUN_CONFIG.configExists('COORD_NUM_RESIDUE'):
+        if self.CONFIG.configExists('COORD_NUM_RESIDUE'):
             coord_numbers = self.GRAPH.coordinationNumber()
 
-            for res in self.RUN_CONFIG.config['COORD_NUM_RESIDUE']:
+            for res in self.CONFIG.config['COORD_NUM_RESIDUE']:
                 coord_string = ' '.join([f"Shell {shell_index+1}: {round(shell[res],4)}" for shell_index,shell in enumerate(coord_numbers)])
                 if self.RANK == 0:
-                    print("------Coordination Numbers------")
-                    print(f'{res}: {coord_string}\n')
+                    self.CONFIG.STDOUT.write("------Coordination Numbers------\n")
+                    self.CONFIG.STDOUT.write(f'{res}: {coord_string}\n\n')
 
-        if self.RUN_CONFIG.configExists('K_LIGAND'):
+        if self.CONFIG.configExists('K_LIGAND'):
             residues_Ks = self.GRAPH.bindingProbability()
 
-            for res_index in range(len(self.RUN_CONFIG.config['K_LIGAND'])):
-                res = self.RUN_CONFIG.config['K_LIGAND'][res_index]
-                concentration = self.RUN_CONFIG.config['K_LIGAND_CONC'][res_index]
+            for res_index in range(len(self.CONFIG.config['K_LIGAND'])):
+                res = self.CONFIG.config['K_LIGAND'][res_index]
+                concentration = self.CONFIG.config['K_LIGAND_CONC'][res_index]
                 if residues_Ks[res] is None:
                     Ks_string = 'No association events found'
                 else:
                     Ks_string = ' '.join([f"K_{index+1}: {round(constant/concentration,4)}" for index,constant in enumerate(residues_Ks[res])])
                 if self.RANK == 0:
-                    print("------Association Constants------")
-                    print(f'{res}: {Ks_string}\n')
+                    self.CONFIG.STDOUT.write("------Association Constants------\n")
+                    self.CONFIG.STDOUT.write(f'{res}: {Ks_string}\n\n')
 
-        if self.RUN_CONFIG.configExists('VIS_SUB_GRAPH_SIZE'):
-            self.GRAPH.visuallizeGraph(self.RUN_CONFIG.config['VIS_SUB_GRAPH_SIZE'])
+        if self.CONFIG.configExists('VIS_SUB_GRAPH_SIZE'):
+            self.GRAPH.visuallizeGraph(self.CONFIG.config['VIS_SUB_GRAPH_SIZE'])
 
 class rxnGraph():
     def __init__(self, configuration:"configuration"):
 
-        self.RUN_CONFIG = configuration
+        self.CONFIG = configuration
 
         self.rxnGraphDict = {} #Stores node indexes under unique node keys (e.g. key:"Shell 1: H2O:5 Shell 2: H2O:10" / value:16) for quick finding + referencing of reaction nodes
 
@@ -3693,10 +3691,10 @@ class rxnGraph():
     #Fundimental object to graph class
     class rxnNode():
         def __init__(self, configuration:"configuration", solvation_shells:list=[], sol_counts:list=None, outer_shell:dict=None, nodeStringList:list=None):
-            self.RUN_CONFIG = configuration
+            self.CONFIG = configuration
             self.index = -1
             self.weight = 0
-            self.num_solvation_shells = self.RUN_CONFIG.config['REACTION_SHELLS']
+            self.num_solvation_shells = self.CONFIG.config['REACTION_SHELLS']
             self.shells = [{} for _ in range(self.num_solvation_shells)]
             self.solvent_counts = [{} for _ in range(self.num_solvation_shells)]
             self.outer_shell_counts = None
@@ -3706,8 +3704,8 @@ class rxnGraph():
                 #self.shells,self.solvent_counts,self.outer_shell_counts,self.weight = self.str_list_to_node(nodeStringList)
                 self.weight,solvation_shells,sol_counts,outer_shell = self.str_list_to_node(nodeStringList)
 
-            self.RESIDUES = sorted(self.RUN_CONFIG.config['RESIDUE_LIST'].keys())
-            self.COARSENED_RESIDUES = sorted(self.RUN_CONFIG.config['COARSEN_SOLVENT_RESIDUES']) if self.RUN_CONFIG.configExists('COARSEN_SOLVENT_RESIDUES') else set()
+            self.RESIDUES = sorted(self.CONFIG.config['RESIDUE_LIST'].keys())
+            self.COARSENED_RESIDUES = sorted(self.CONFIG.config['COARSEN_SOLVENT_RESIDUES']) if self.CONFIG.configExists('COARSEN_SOLVENT_RESIDUES') else set()
             self.NON_COARSENED_RESIDUES = sorted(set(self.RESIDUES) - set(self.COARSENED_RESIDUES))
 
             #solvation_shells and sol_counts should be loaded like this, below is messy
@@ -3719,7 +3717,7 @@ class rxnGraph():
             if not isinstance(solvation_shells,list) and not all(isinstance(shell,dict) for shell in solvation_shells):
                 raise mySystemError("Argument error in rxnNode(): Non-dictionary 'solvation_shells' list object provided to rxnNode(), the correct argument type is [{RES1:RES_NUM1,RES2:RES_NUM2,...},{RES1:RES_NUM1,...},...]")
             if len(solvation_shells) > self.num_solvation_shells:
-                print('Warning: Argument error in rxnNode(): input solvation_shells oversized, truncating.')
+                self.CONFIG.STDOUT.write('Warning: Argument error in rxnNode(): input solvation_shells oversized, truncating\n')
                 solvation_shells = solvation_shells[:self.num_solvation_shells]
             if len(solvation_shells) < self.num_solvation_shells:
                 solvation_shells.extend([{} for _ in range(self.num_solvation_shells - len(solvation_shells))])
@@ -3731,7 +3729,7 @@ class rxnGraph():
 
                 if invalid_residues:
                     for res in invalid_residues:
-                        print("Warning: Argument error in rxnNode(): Invalid dictionary residue key given, removing.")
+                        self.CONFIG.STDOUT.write("Warning: Argument error in rxnNode(): Invalid dictionary residue key given, removing\n")
                         shell.pop(res)
                 
                 if missing_defaults:
@@ -3744,7 +3742,7 @@ class rxnGraph():
             # solvent_range holds the node-sepcific range of solvent number encountered in each shell
             #-------------------------------------------
             
-            if self.RUN_CONFIG.configExists('COARSEN_SOLVENT_RESIDUES'):
+            if self.CONFIG.configExists('COARSEN_SOLVENT_RESIDUES'):
                 for shell_index in range(self.num_solvation_shells):
                     for res in self.RESIDUES:
                         if res in self.COARSENED_RESIDUES:
@@ -3756,7 +3754,7 @@ class rxnGraph():
                     if not all(isinstance(shell,dict) for shell in sol_counts):
                         raise mySystemError("Argument error in rxnNode(): Non-dictionary 'sol_counts' list object provided to rxnNode(), the correct argument type is [{SOL1:SOL_NUM,SOL2:SOL_NUM,...},{SOL1:SOL_NUM,...},...]")
                     if len(sol_counts) > self.num_solvation_shells:
-                        print('Warning: Argument error in rxnNode(): input sol_counts oversized, truncating.')
+                        self.CONFIG.STDOUT.write('Warning: Argument error in rxnNode(): input sol_counts oversized, truncating\n')
                         sol_counts = sol_counts[:self.num_solvation_shells]
                     if len(sol_counts) < self.num_solvation_shells:
                         sol_counts.extend([{} for _ in range(self.num_solvation_shells - len(sol_counts))])
@@ -3766,7 +3764,7 @@ class rxnGraph():
                         invalid_residues = shell.keys() - self.COARSENED_RESIDUES
 
                         if invalid_residues:
-                            print("Warning: rxnNode() argument error. Invalid sol_counts residue(s) given, {invalid_residues}, removing.")
+                            self.CONFIG.STDOUT.write("Warning: rxnNode() argument error. Invalid sol_counts residue(s) given, {invalid_residues}, removing\n")
                             for res in invalid_residues:
                                 shell.pop(res)
                         
@@ -3781,7 +3779,7 @@ class rxnGraph():
 
         def updateOuterShell(self,outerShell):
             if not (outerShell.keys() <= self.outer_shell_counts.keys()):
-                raise mySystemError(f"Attempted to update rxnNode {str(self)} outer shell averages with at least 1 unknown residue: {outerShell.keys()-self.outer_shell_counts.keys()}.")
+                raise mySystemError(f"Attempted to update rxnNode {str(self)} outer shell averages with at least 1 unknown residue: {outerShell.keys()-self.outer_shell_counts.keys()}")
 
             for residue,count in outerShell.items():
                 if residue not in self.outer_shell_counts:
@@ -3795,14 +3793,14 @@ class rxnGraph():
         def addShell(self,contents:dict,shell_index=-1):
 
             if shell_index < len(self.shells):
-                print("rxnNode.addShell() ERROR: Invalid index provided")
+                self.CONFIG.STDOUT.write("rxnNode.addShell() ERROR: Invalid index provided\n")
                 return
             elif shell_index == -1:
                 self.shells.append({})
             
             for key in contents:
-                if key not in self.RUN_CONFIG.config['RESIDUE_LIST']:
-                    print("Argument error in rxnNode.editShell: Invalid residue key given")
+                if key not in self.CONFIG.config['RESIDUE_LIST']:
+                    self.CONFIG.STDOUT.write("Argument error in rxnNode.editShell: Invalid residue key given\n")
                 else:
                     self.shells[shell_index][key] = contents[key]
 
@@ -3816,9 +3814,9 @@ class rxnGraph():
             if self.weight == 0:
                 return 'NA'
             shell_string = [f"{' '.join([f'{res}:{shell[res]}' for res in self.NON_COARSENED_RESIDUES if shell[res] != 0] + [f'{res}({round(sol_average/self.weight,2)})' for res, sol_average in self.solvent_counts[index].items()])}" for index, shell in enumerate(self.shells)]
-            if self.RUN_CONFIG.configExists('CONSERVE_COORDINATION'):
-                shell_string += [f"{' '.join([f'{res}({round(self.outer_shell_counts[res]/self.weight,2)})' for res in sorted(self.RUN_CONFIG.config['RESIDUE_LIST'])])}"]
-            if self.RUN_CONFIG.configExists('HBOND_TARGET'):
+            if self.CONFIG.configExists('CONSERVE_COORDINATION'):
+                shell_string += [f"{' '.join([f'{res}({round(self.outer_shell_counts[res]/self.weight,2)})' for res in sorted(self.CONFIG.config['RESIDUE_LIST'])])}"]
+            if self.CONFIG.configExists('HBOND_TARGET'):
                 shell_string += [f"{round(self.hbond_count/self.weight,2)}"]
             return shell_string
 
@@ -3847,7 +3845,7 @@ class rxnGraph():
                 raise mySystemError(f"Unable to parse node weight section of reaction graph file line: {''.join(string_list)}")
             node_weight = int(weight_match[0])
             
-            for shell in string_list[:self.RUN_CONFIG.config['REACTION_SHELLS']]:
+            for shell in string_list[:self.CONFIG.config['REACTION_SHELLS']]:
                 ligand_matches = re.findall(LIGAND_PATTERN, shell)
                 solvent_matches = re.findall(SOLVENT_PATTERN, shell)
 
@@ -3857,7 +3855,7 @@ class rxnGraph():
                 solvent_counts.append(solvent_dict)
 
             outer_counts = None
-            if self.RUN_CONFIG.config['CONSERVE_COORDINATION'] is not None:
+            if self.CONFIG.config['CONSERVE_COORDINATION'] is not None:
                 outer_matches = re.findall(SOLVENT_PATTERN, string_list[-2])
                 outer_counts = {k: int(round(float(v) * node_weight)) for k, v in outer_matches}
 
@@ -3949,11 +3947,11 @@ class rxnGraph():
             self.edgeWeights[edge_key] = weight
 
     def updateSolventRange(self,newNode:rxnNode,oldNode:rxnNode,newNodeWeight:int=None):
-        if not self.RUN_CONFIG.configExists('COARSEN_SOLVENT_RESIDUES'):
+        if not self.CONFIG.configExists('COARSEN_SOLVENT_RESIDUES'):
             return
 
-        for shell_index in range(self.RUN_CONFIG.config['REACTION_SHELLS']):
-            for solvent_key in self.RUN_CONFIG.config['COARSEN_SOLVENT_RESIDUES']:
+        for shell_index in range(self.CONFIG.config['REACTION_SHELLS']):
+            for solvent_key in self.CONFIG.config['COARSEN_SOLVENT_RESIDUES']:
                 oldNode.solvent_counts[shell_index][solvent_key] += newNode.solvent_counts[shell_index][solvent_key]
 
     def addEdge(self,From:rxnNode,To:rxnNode,bidirectional:bool=False):
@@ -4014,10 +4012,10 @@ class rxnGraph():
             headers = []
             shell_header_len = int(len(max_lengths))
             formatted_header = []
-            if self.RUN_CONFIG.configExists('CONSERVE_COORDINATION'):
+            if self.CONFIG.configExists('CONSERVE_COORDINATION'):
                 headers.append('[Outer shell]')
                 shell_header_len -= 1
-            if self.RUN_CONFIG.configExists('HBOND_TARGET'):
+            if self.CONFIG.configExists('HBOND_TARGET'):
                 headers.append('[Avg. H-Bonds]')
                 shell_header_len -= 1
             for i in range(shell_header_len-1,-1,-1):
@@ -4047,10 +4045,10 @@ class rxnGraph():
             total_header_len = int(len(max_lengths)/2)
             shell_header_len = total_header_len
             formatted = []
-            if self.RUN_CONFIG.configExists('CONSERVE_COORDINATION'):
+            if self.CONFIG.configExists('CONSERVE_COORDINATION'):
                 headers.append('[Outer shell]')
                 shell_header_len -= 1
-            if self.RUN_CONFIG.configExists('HBOND_TARGET'):
+            if self.CONFIG.configExists('HBOND_TARGET'):
                 headers.append('[Avg. H-Bonds]')
                 shell_header_len -= 1
             for i in range(shell_header_len-1,-1,-1):
@@ -4082,7 +4080,7 @@ class rxnGraph():
 
         #This should probably be removed after testing to avoid expense
         if newNode in self.NODES:
-            raise Exception("rxnGraph.storeNewNode() attempted to add duplicate to NODES.")
+            raise Exception("rxnGraph.storeNewNode() attempted to add duplicate to NODES")
         else:
             self.NODES.append(newNode) #Add new node to list
 
@@ -4142,21 +4140,21 @@ class rxnGraph():
         if self.graphLen == 0:
             return np.empty(shape=(0,), dtype=float)
 
-        all_res_keys_sorted = sorted(set(self.RUN_CONFIG.config['RESIDUE_LIST'].keys()))
-        res_keys_sorted = sorted(set(self.RUN_CONFIG.config['RESIDUE_LIST'].keys()) - (set() if not self.RUN_CONFIG.configExists('COARSEN_SOLVENT_RESIDUES') else set(self.RUN_CONFIG.config['COARSEN_SOLVENT_RESIDUES'])))
-        solvent_keys_sorted = sorted((set() if not self.RUN_CONFIG.configExists('COARSEN_SOLVENT_RESIDUES') else self.RUN_CONFIG.config['COARSEN_SOLVENT_RESIDUES']))
+        all_res_keys_sorted = sorted(set(self.CONFIG.config['RESIDUE_LIST'].keys()))
+        res_keys_sorted = sorted(set(self.CONFIG.config['RESIDUE_LIST'].keys()) - (set() if not self.CONFIG.configExists('COARSEN_SOLVENT_RESIDUES') else set(self.CONFIG.config['COARSEN_SOLVENT_RESIDUES'])))
+        solvent_keys_sorted = sorted((set() if not self.CONFIG.configExists('COARSEN_SOLVENT_RESIDUES') else self.CONFIG.config['COARSEN_SOLVENT_RESIDUES']))
 
         all_res_len = len(all_res_keys_sorted)
         res_len = len(res_keys_sorted)
         sol_len = len(solvent_keys_sorted)
         shell_len = res_len + sol_len
         if all_res_len != shell_len:
-            raise mySystemError('Graph unpacking chunk size issue, check residue list.')
+            raise mySystemError('Graph unpacking chunk size issue, check residue list')
 
-        num_shells = self.RUN_CONFIG.config['REACTION_SHELLS']
+        num_shells = self.CONFIG.config['REACTION_SHELLS']
         edge_len = len(self.edgeWeights)
         data_length = (self.graphLen * num_shells * shell_len) + self.graphLen + (edge_len * 3)
-        if self.RUN_CONFIG.configExists('COARSEN_SOLVENT_RESIDUES'):
+        if self.CONFIG.configExists('COARSEN_SOLVENT_RESIDUES'):
             data_length += self.graphLen * shell_len
 
         graph_data = np.empty(data_length, dtype=int)
@@ -4175,7 +4173,7 @@ class rxnGraph():
                     graph_data[current:current+sol_len] = get_sol(sol)
                 current += sol_len
             
-            if self.RUN_CONFIG.configExists('COARSEN_SOLVENT_RESIDUES'):
+            if self.CONFIG.configExists('COARSEN_SOLVENT_RESIDUES'):
                 graph_data[current:current+shell_len] = get_all_res(node.outer_shell_counts)
                 current += shell_len
 
@@ -4353,6 +4351,10 @@ class configuration():
 
         self.INPUT_FILE_NAME = cl_input_file
 
+        self.STDOUT = None #Write location for standard output
+        self.STDERR = None #Write location for standard output
+        self.METAOUT = None #Write location for performance analytics
+
         self.config = {
             #Input file reading parameters----------
             'SYSTEM_TYPE':None,
@@ -4499,10 +4501,10 @@ class configuration():
             'REACTANT_TO_PRINT':'Reactant solvation shell composition to extract',
             'CONSERVE_COORDINATION':'Residue(s) and number(s) to conserve for each specie',
             'COARSEN_SOLVENT_RESIDUES':'Residues to corsen when building reaction graph. Will not trace coordination changes from these species, instead storing a range',
-            'EXCLUDE_SOLVENT_RESIDUES':"Specifies residues to explicitly exlude from extracted clusters when utilizing solvent corsening, must be a subset of 'COARSEN_SOLVENT_RESIDUES'. Not necessary if utilizing 'CONSERVE_COORDINATION', which exactly specifies the composition of the cluster.",
+            'EXCLUDE_SOLVENT_RESIDUES':"Specifies residues to explicitly exlude from extracted clusters when utilizing solvent corsening, must be a subset of 'COARSEN_SOLVENT_RESIDUES'. Not necessary if utilizing 'CONSERVE_COORDINATION', which exactly specifies the composition of the cluster",
 
             #Extraction/reaction graph type filtering control
-            'FILTER_REACTANTS_BY_Z':'#Z bounds within which reactants must be to be filtered for extraction or reaction graph, must be in angstroms. Multiple bounds may be used.',
+            'FILTER_REACTANTS_BY_Z':'#Z bounds within which reactants must be to be filtered for extraction or reaction graph, must be in angstroms. Multiple bounds may be used',
             'HBOND_TARGET':'Number of H-Bonds that extracted clusters should have',
             'HBOND_DEV':"Maximum allowed deviation (plus or minus) from 'HBOND_TARGET' for extracted clusters",
             'SPECTATOR_TARGET':'Number of each type of spectator (outer shell) ion clusters should contain',
@@ -4534,7 +4536,7 @@ class configuration():
             'TRJ_FILE_PATH':"",
             'TOPOLOGY_FILE_PATH':"",
             'DUMP_FREQ':"",
-            'FRAMES_TO_PROCESS':"frame or (start,stop,step), frame: process first 'frame' frames, -1 --> process all frames, (start,stop,step) process slice of trajectory following python slicing notation (e.g. (10,100,2) --> [10:100:2] iterate trajecory from frame 10 to 100 in steps of 2).",
+            'FRAMES_TO_PROCESS':"frame or (start,stop,step), frame: process first 'frame' frames, -1 --> process all frames, (start,stop,step) process slice of trajectory following python slicing notation (e.g. (10,100,2) --> [10:100:2] iterate trajecory from frame 10 to 100 in steps of 2)",
 
             'ATOM_TYPE_LIST':'[atom_type_1_name,atom_type_2_name,...] ex. [HW,Li,OW]',
             'RESIDUE_LIST':'{residue_type_1:[atom_type_1,atom_type_2,...],...} e.g. {H2O:[OW,HW,HW],Li:[Li],NO3-:[NO,ON,ON,ON]}',
@@ -4542,7 +4544,7 @@ class configuration():
             'REACTANT':"",
             'REACTION_SHELLS':"",
             'CLUSTER_MOLECULES':"",
-            'PAIR_CUTOFFS':'{(atom_type_x,atom_type_y):cutoff,... or ((atom_type_x,atom_type_y,...),atom_type_z):cutoff,... or ((atom_type_x,atom_type_y,...),(atom_type_i,atom_type_j,...)):cutoff,...}  NOTE: Does not need to include all atom pairs.',
+            'PAIR_CUTOFFS':'{(atom_type_x,atom_type_y):cutoff,... or ((atom_type_x,atom_type_y,...),atom_type_z):cutoff,... or ((atom_type_x,atom_type_y,...),(atom_type_i,atom_type_j,...)):cutoff,...}  NOTE: Does not need to include all atom pairs',
 
             'CREATE_RXN_GRAPH':'True or False, default: False',
             'WRITE_DIRECTORY':"",
@@ -4567,7 +4569,7 @@ class configuration():
             'QC_BASIS':"'QCHEM_basis_set_keyword' or {atom_type1:basis_set_keyword,atom_type2:basis_set_keyword,...}",
             'QC_BASIS2':"'QCHEM_aux_basis_set_keyword' or {atom_type1:aux_basis_set_keyword,atom_type2:aux_basis_set_keyword,...}",
             'QC_PSEUDO':"{atom_type1:pseudopotential_keyword,atom_type2:pseudopotential_keyword,...}",
-            'QC_METHOD':"'QCHEM_method_keyword' e.g., 'HF', 'B3LYP', etc.",
+            'QC_METHOD':"'QCHEM_method_keyword' e.g., 'HF', 'B3LYP', etc",
             'QC_PCM_METHOD':"",
                             
             'DEBUG':"",
@@ -4582,7 +4584,7 @@ class configuration():
             }
 
         if not (self.config.keys() == self.types.keys() == self.comments.keys() == self.syntax.keys()):
-            raise configurationError('configuration class initialization error.')
+            raise configurationError('configuration class initialization error')
 
     def configExists(self,parameter_name):
         return not (self.config[parameter_name] is None)
@@ -4590,10 +4592,10 @@ class configuration():
     def loadCommandLine(self):
 
         if len(sys.argv) < 3:
-            raise configurationError("Missing command line input file. Run command is 'python mySystem_mpi.py config_file_name' (for serial) or 'mpiexec -n NUM_CORES python mySystem_mpi.py config_file_name' (for parallel).")
+            raise configurationError("Missing command line input file. Run command is 'python mySystem_mpi.py config_file_name' (for serial) or 'mpiexec -n NUM_CORES python mySystem_mpi.py config_file_name' (for parallel)")
         elif len(sys.argv) > 3:
             if self.RANK == 0:
-                print('WARNING: Excess command line arguments provided. Arguments beyond command line intput file name will be ignored.')
+                self.CONFIG.STDOUT.write('WARNING: Excess command line arguments provided. Arguments beyond command line intput file name will be ignored\n')
         else:
             self.INPUT_FILE_NAME = sys.argv[2]
             if os.path.isfile(self.INPUT_FILE_NAME):
@@ -4601,7 +4603,7 @@ class configuration():
             elif os.path.isfile(os.path.join(os.getcwd(),self.INPUT_FILE_NAME)):
                 self.INPUT_FILE_NAME = os.path.join(os.getcwd,self.INPUT_FILE_NAME)
             else:
-                raise configurationError('Command line input file not found.')
+                raise configurationError('Command line input file not found')
                 
     def readInputFile(self):
 
@@ -4640,13 +4642,13 @@ class configuration():
                 eq_delim_split = [part.strip() for part in line.split('=')]
 
                 if len(eq_delim_split) > 2: #Line contains multiple '=' --> exit
-                    raise configurationError(f'Reading configuration file, cannot resolve line: "{line}". Parameter lines must begin with "PARAMETER_KEYWORD = " or "PARAMETER_KEYWORD=", the parameter may span multiple lines.')
+                    raise configurationError(f'Reading configuration file, cannot resolve line: "{line}". Parameter lines must begin with "PARAMETER_KEYWORD = " or "PARAMETER_KEYWORD=", the parameter may span multiple lines')
                 
                 if len(eq_delim_split[0].split()) > 1: #Parameter is not a single word --> exit
-                    raise configurationError(f'Reading configuration file, cannot resolve line: "{line}". Parameter lines must begin with "PARAMETER_KEYWORD = " or "PARAMETER_KEYWORD=", the parameter may span multiple lines.')
+                    raise configurationError(f'Reading configuration file, cannot resolve line: "{line}". Parameter lines must begin with "PARAMETER_KEYWORD = " or "PARAMETER_KEYWORD=", the parameter may span multiple lines')
 
                 if not eq_delim_split[0].split(): #Line contains leading '='
-                    raise configurationError(f'Reading configuration file, cannot resolve line: "{line}". Parameter lines must begin with "PARAMETER_KEYWORD = " or "PARAMETER_KEYWORD=", the parameter may span multiple lines.')
+                    raise configurationError(f'Reading configuration file, cannot resolve line: "{line}". Parameter lines must begin with "PARAMETER_KEYWORD = " or "PARAMETER_KEYWORD=", the parameter may span multiple lines')
 
                 continue_param = eq_delim_split[0]
                 param_dict[eq_delim_split[0]] = eq_delim_split[1]
@@ -4654,7 +4656,7 @@ class configuration():
                 try:
                     param_dict[continue_param] += line
                 except IndexError:
-                    raise configurationError(f'Reading configuration file, cannot resolve line: "{line}".')
+                    raise configurationError(f'Reading configuration file, cannot resolve line: "{line}"')
 
         ATOM_TYPE_REGEX = r'(?<![a-zA-Z0-9+_.\-\/"\'\b])(?!(?:-?\d+\.?\d*|(?:"|\'))(?:[,\]\)\s:}]|$))([a-zA-Z0-9+_.\-\/]+)(?![a-zA-Z0-9+_.\-\/"\'\b])' #Captures non-quoted parameters and puts them in quotes for python literal interpretation, will capture parameters with '.-_+' and numbers, will not capture fully digit parameters
 
@@ -4708,12 +4710,25 @@ class configuration():
             inputOut.write(f'{parameter_name} = {parameter}\t\t#{self.comments[parameter_name]}, syntax- {self.syntax[parameter_name]}\n')
         inputOut.flush()
 
+    def outputType(self):
+        if "SLURM_JOB_ID" in os.environ:
+            self.STDOUT = open(f"./{self.config['WRITE_DIRECTORY']}/{self.config['RUN_NAME']}/out",'w')
+            self.STDERR = open(f"./{self.config['WRITE_DIRECTORY']}/{self.config['RUN_NAME']}/err",'w')
+            self.METAOUT = open(f"./{self.config['WRITE_DIRECTORY']}/{self.config['RUN_NAME']}/meta",'w')
+            # sys.stdout = open(f"./{self.config['WRITE_DIRECTORY']}/{self.config['RUN_NAME']}/out",'w')
+            # sys.stderr = open(f"./{self.config['WRITE_DIRECTORY']}/{self.config['RUN_NAME']}/err",'w')
+            if self.RANK == 0:
+                self.STDOUT.write(f'SLURM JOD ID: {os.environ["SLURM_JOB_ID"]}',flush=True)
+        else:
+            self.STDOUT = sys.stdout
+            self.STDERR = sys.stderr
+
 def main():
     COMM = MPI.COMM_WORLD
     NP = COMM.Get_size()
     RANK = COMM.Get_rank()
 
-    parser = argparse.ArgumentParser(prog='mySystem_mpi',description="Process user input file (-i INPUT_FILE_PATH) or make template input file (-m).")
+    parser = argparse.ArgumentParser(prog='mySystem_mpi',description="Process user input file (-i INPUT_FILE_PATH) or make template input file (-m)")
     #group = parser.add_mutually_exclusive_group(required=True)
     group = parser.add_argument_group()
 
@@ -4767,14 +4782,11 @@ def main():
             os.makedirs(path, exist_ok=True)
             config_manager.writeFullInput()
         COMM.Barrier()
-        if "SLURM_JOB_ID" in os.environ:
-            sys.stdout = open(f"./{config_manager.config['WRITE_DIRECTORY']}/{config_manager.config['RUN_NAME']}/out",'w')
-            sys.stderr = open(f"./{config_manager.config['WRITE_DIRECTORY']}/{config_manager.config['RUN_NAME']}/err",'w')
-            if RANK == 0:
-                print(f'SLURM JOD ID: {os.environ["SLURM_JOB_ID"]}',flush=True)
+
+        config_manager.outputType()
 
         if RANK == 0:
-            print(f'Running using {NP} processor(s)',flush=True)
+            config_manager.STDOUT.write(f'Running using {NP} processor(s)\n')
     
         #Create, initialize, and run Reaction System
         reaction_system = system(config_manager)
@@ -4803,7 +4815,7 @@ def main():
 
         # Print the captured output
         if RANK == 0:
-            print(s.getvalue(),flush=True)
+            config_manager.STDOUT.write(s.getvalue(),flush=True)
 
 if __name__ == "__main__":
     main()

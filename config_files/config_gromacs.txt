@@ -3,7 +3,7 @@ DATA_FILE_PATH = md_files/pro_2.gro                  #Relative path to data file
 TRJ_FILE_PATH = md_files/pro_3_unwrapped.xtc         #Relative path to trajectory file
 TOPOLOGY_FILE_PATH = None                   #Optional topology file
 DUMP_FREQ = 100                             #timestep in fs
-FRAMES_TO_PROCESS = -1                      #Number of trajectory frames to process, -1 --> process all frames
+FRAMES_TO_PROCESS = 10                      #Number of trajectory frames to process, -1 --> process all frames
 
 ATOM_TYPE_LIST=None                         #Ordered atom type list if no atom type are provided, syntax = [atom_type_1_name,atom_type_2_name,...] ex. [HW,Li,OW]
 RESIDUE_LIST = None                         #Dictionary mathcing residue types to un-ordered atom type lists, syntax = {residue_type_1:[atom_type_1,atom_type_2,...],...} e.g. {H2O:[OW,HW,HW],Li:[Li],NO3-:[NO,ON,ON,ON]}
