@@ -1492,22 +1492,36 @@ class system():
         self.EXTRACT_FAIL_STATS['TOTAL_WRITE_FAILED_UNDER_HBOND_COUNT'] = sum(all_counts[9::send_stat_num])
 
     def makeElementSymbolList(self):
+        if not self.CONFIG.configExists('OUTPUT_TYPE') or ('XYZ' not in self.CONFIG.config['OUTPUT_TYPE'] and 'QCHEM' not in self.CONFIG.config['OUTPUT_TYPE']): #If no output file that uses element symbol labeling is requested simply use user atom type labels
+            self.ELEMENTSYMBOLS = self.ATOMTYPES
+            return
+        
         self.ELEMENTSYMBOLS = np.empty(self.NUM_ATOMS,dtype=object)
         if self.ATOMTYPES.size != self.ELEMENTSYMBOLS.size:
             raise mySystemError('Atom type array size does not match element symbol array size')
-        for index,atom_type in enumerate(self.ATOMTYPES):
-            if atom_type in self.ELEMENTS:
-                self.ELEMENTSYMBOLS[index] = atom_type
+        atomtypes = np.unique(self.ATOMTYPES)
+        type_indexes = [atomtypes == type for type in atomtypes]
+        for type,indexes in zip(atomtypes,type_indexes):
+            if type in self.ELEMENTS:
+                self.ELEMENTSYMBOLS[indexes] = type
                 continue
-            if len(atom_type) == 1:
-                raise mySystemError(f"Unable to convert atom-type to element symbol: '{atom_type}'")
-            if atom_type[:2] in self.ELEMENTS:
-                self.ELEMENTSYMBOLS[index] = atom_type[:2]
+            if len(type) == 1:
+                raise mySystemError(f"Unable to convert atom-type to element symbol: '{type}'. Please provide 'ATOM_TYPE_LIST'")
+            if type[:2] in self.ELEMENTS:
+                self.ELEMENTSYMBOLS[indexes] = type[:2]
                 continue
-            if atom_type[:1] in self.ELEMENTS:
-                self.ELEMENTSYMBOLS[index] = atom_type[:1]
+            if type[:1] in self.ELEMENTS:
+                self.ELEMENTSYMBOLS[indexes] = type[:1]
                 continue
-            raise mySystemError(f"Unable to convert atom-type to element symbol: '{atom_type}'")
+
+            type_as_string = type.item()
+            if type_as_string[1].isupper():
+                type_as_string[1] = type_as_string[1].lower()
+                if type_as_string[:2] in self.ELEMENTS:
+                    self.ELEMENTSYMBOLS[indexes] = type_as_string[:2]
+                    continue
+
+            raise mySystemError(f"Unable to convert atom-type to element symbol: '{type}'")
                                                                                                                
     def getElementSymbol(self,atom_type:str):
         if atom_type in self.ELEMENTS:
@@ -2792,7 +2806,7 @@ class system():
             return
         
         #Overwrite graphOut to only show most recent reaction graph
-        self.graphOut = open(f"./{self.CONFIG.config['WRITE_DIRECTORY']}/{self.CONFIG.config['RUN_NAME']}/rxn_graph.{self.STEP}.txt",'w')
+        self.graphOut = open(f"./{self.CONFIG.config['WRITE_DIRECTORY']}/{self.CONFIG.config['RUN_NAME']}/rxn_graph.txt",'w')
         self.ALL_RANKS_GRAPH.writeWeights(self.graphOut, start=self.START_STEP, end=self.STEP)
         self.graphOut.flush()
 
@@ -3140,17 +3154,6 @@ class system():
 
                 for atom in mol.atoms:
 
-                    # if self.ATOMTYPES[atom] in self.ELEMENTS:
-                    #     xyz.write(str(self.ATOMTYPES[atom]) + " " + str(self.X[atom]) + " " + str(self.Y[atom]) + " " + str(self.Z[atom]) + '\n')
-                    # elif len(str(self.ATOMTYPES[atom])) == 1:
-                    #     self.CONFIG.STDOUT.write("ERROR: Unable to convert atom-type label to element symbol\n")
-                    # elif self.ATOMTYPES[atom][:2] in self.ELEMENTS:
-                    #     xyz.write(str(self.ATOMTYPES[atom][:2]) + " " + str(self.X[atom]) + " " + str(self.Y[atom]) + " " + str(self.Z[atom]) + '\n')
-                    # elif self.ATOMTYPES[atom][:1] in self.ELEMENTS:
-                    #     xyz.write(str(self.ATOMTYPES[atom][:1]) + " " + str(self.X[atom]) + " " + str(self.Y[atom]) + " " + str(self.Z[atom]) + '\n')
-                    # else:
-                    #     self.CONFIG.STDOUT.write("ERROR: Unable to convert atom-type label to element symbol\n")
-
                     xyz.write(str(self.ELEMENTSYMBOLS[atom]) + " " + str(self.X[atom]) + " " + str(self.Y[atom]) + " " + str(self.Z[atom]) + '\n')
 
             xyz.flush()
@@ -3164,16 +3167,6 @@ class system():
 
         for j in reactant.atoms:
             atom_num += 1
-            # if self.ATOMTYPES[j] in self.ELEMENTS:
-            #     write += (str(self.ATOMTYPES[j]) + " " + str(self.X[j]) + " " + str(self.Y[j]) + " " + str(self.Z[j]) + '\n')
-            # elif len(str(self.ATOMTYPES[j])) == 1:
-            #     self.CONFIG.STDOUT.write("ERROR: Unable to convert atom-type label to element symbol\n")
-            # elif self.ATOMTYPES[j][:2] in self.ELEMENTS:
-            #     write += (str(self.ATOMTYPES[j][:2]) + " " + str(self.X[j]) + " " + str(self.Y[j]) + " " + str(self.Z[j]) + '\n')
-            # elif self.ATOMTYPES[j][:1] in self.ELEMENTS:
-            #     write += (str(self.ATOMTYPES[j][:1]) + " " + str(self.X[j]) + " " + str(self.Y[j]) + " " + str(self.Z[j]) + '\n')
-            # else:
-            #     self.CONFIG.STDOUT.write("ERROR: Unable to convert atom-type label to element symbol\n")
 
             write += (str(self.ELEMENTSYMBOLS[j][:1]) + " " + str(self.X[j]) + " " + str(self.Y[j]) + " " + str(self.Z[j]) + '\n')
 
@@ -3187,17 +3180,6 @@ class system():
                     atom_num += 1
 
                     relativeX, relativeY, relativeZ = self.pbcDistance(self.X[atom],refX,self.Y[atom],refY,self.Z[atom],refZ,returnComponents=True)
-
-                    # if self.ATOMTYPES[atom] in self.ELEMENTS:
-                    #     write += (str(self.ATOMTYPES[atom]) + " " + str(refX+relativeX) + " " + str(refY+relativeY) + " " + str(refZ+relativeZ) + '\n')
-                    # elif len(str(self.ATOMTYPES[atom])) == 1:
-                    #     self.CONFIG.STDOUT.write("ERROR: Unable to convert atom-type label to element symbol\n")
-                    # elif self.ATOMTYPES[atom][:2] in self.ELEMENTS:
-                    #     write += (str(self.ATOMTYPES[atom][:2]) + " " + str(refX+relativeX) + " " + str(refY+relativeY) + " " + str(refZ+relativeZ) + '\n')
-                    # elif self.ATOMTYPES[atom][:1] in self.ELEMENTS:
-                    #     write += (str(self.ATOMTYPES[atom][:1]) + " " + str(refX+relativeX) + " " + str(refY+relativeY) + " " + str(refZ+relativeZ) + '\n')
-                    # else:
-                    #     self.CONFIG.STDOUT.write("ERROR: Unable to convert atom-type label to element symbol, skipping...\n")
 
                     write += (str(self.ELEMENTSYMBOLS[atom][:1]) + " " + str(refX+relativeX) + " " + str(refY+relativeY) + " " + str(refZ+relativeZ) + '\n')
 
@@ -3244,16 +3226,6 @@ class system():
 
             for j in reactant.atoms:
                 atom_num += 1
-                # if self.ATOMTYPES[j] in self.ELEMENTS:
-                #     write += (str(self.ATOMTYPES[j]) + " " + str(self.X[j]) + " " + str(self.Y[j]) + " " + str(self.Z[j]) + '\n')
-                # elif len(str(self.ATOMTYPES[j])) == 1:
-                #     self.CONFIG.STDOUT.write("ERROR: Unable to convert atom-type label to element symbol\n")
-                # elif self.ATOMTYPES[j][:2] in self.ELEMENTS:
-                #     write += (str(self.ATOMTYPES[j][:2]) + " " + str(self.X[j]) + " " + str(self.Y[j]) + " " + str(self.Z[j]) + '\n')
-                # elif self.ATOMTYPES[j][:1] in self.ELEMENTS:
-                #     write += (str(self.ATOMTYPES[j][:1]) + " " + str(self.X[j]) + " " + str(self.Y[j]) + " " + str(self.Z[j]) + '\n')
-                # else:
-                #     self.CONFIG.STDOUT.write("ERROR: Unable to convert atom-type label to element symbol\n")
 
                 write += (str(self.ELEMENTSYMBOLS[j][:1]) + " " + str(self.X[j]) + " " + str(self.Y[j]) + " " + str(self.Z[j]) + '\n')
 
@@ -3266,17 +3238,6 @@ class system():
                     atom_num += 1
 
                     relativeX, relativeY, relativeZ = self.pbcDistance(self.X[atom],refX,self.Y[atom],refY,self.Z[atom],refZ,returnComponents=True)
-
-                    # if self.ATOMTYPES[atom] in self.ELEMENTS:
-                    #     write += (str(self.ATOMTYPES[atom]) + " " + str(refX+relativeX) + " " + str(refY+relativeY) + " " + str(refZ+relativeZ) + '\n')
-                    # elif len(str(self.ATOMTYPES[atom])) == 1:
-                    #     self.CONFIG.STDOUT.write("ERROR: Unable to convert atom-type label to element symbol\n")
-                    # elif self.ATOMTYPES[atom][:2] in self.ELEMENTS:
-                    #     write += (str(self.ATOMTYPES[atom][:2]) + " " + str(refX+relativeX) + " " + str(refY+relativeY) + " " + str(refZ+relativeZ) + '\n')
-                    # elif self.ATOMTYPES[atom][:1] in self.ELEMENTS:
-                    #     write += (str(self.ATOMTYPES[atom][:1]) + " " + str(refX+relativeX) + " " + str(refY+relativeY) + " " + str(refZ+relativeZ) + '\n')
-                    # else:
-                    #     self.CONFIG.STDOUT.write("ERROR: Unable to convert atom-type label to element symbol, skipping...\n")
 
                     write += (str(self.ELEMENTSYMBOLS[j][:1]) + " " + str(self.X[j]) + " " + str(self.Y[j]) + " " + str(self.Z[j]) + '\n')
 
