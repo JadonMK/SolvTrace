@@ -1306,6 +1306,14 @@ class system():
                     assert optionalRecieveBuffer.size == sum(all_counts), "ERROR: User recieve buffer incorrect size"
 
                     if ALL:
+                        #Optional check to make sure that the buffers being combined all match in data type
+                        # all_dtype_chars = self.COMM.allgather(sendBuffer.dtype.str)
+                        # if len(set(all_dtype_chars)) != 1:
+                        #     raise TypeError(
+                        #         f"Inconsistent MPI buffer dtypes across ranks: "
+                        #         f"{all_dtype_chars}"
+                        #     )
+
                         self.COMM.Allgatherv([sendBuffer, sendcount, mpi_datatype], [optionalRecieveBuffer, all_counts, displacements, mpi_datatype])
                     else:
                         self.COMM.Gatherv([sendBuffer, sendcount, mpi_datatype], [optionalRecieveBuffer, all_counts, displacements, mpi_datatype])
@@ -1316,6 +1324,13 @@ class system():
                 optionalRecieveBuffer = np.empty(sum(all_counts),dtype=sendDataType)
                 
                 if ALL:
+                    #Optional check to make sure that the buffers being combined all match in data type
+                    # all_dtype_chars = self.COMM.allgather(sendBuffer.dtype.str)
+                    # if len(set(all_dtype_chars)) != 1:
+                    #     raise TypeError(
+                    #         f"Inconsistent MPI buffer dtypes across ranks: "
+                    #         f"{all_dtype_chars}"
+                    #     )
                     self.COMM.Allgatherv([sendBuffer, sendcount, mpi_datatype], [optionalRecieveBuffer, all_counts, displacements, mpi_datatype])
                 else:
                     self.COMM.Gatherv([sendBuffer, sendcount, mpi_datatype], [optionalRecieveBuffer, all_counts, displacements, mpi_datatype])
@@ -3409,7 +3424,7 @@ class system():
                     if self.CONFIG.configExists('COARSEN_SOLVENT_RESIDUES'):
                         outer_shell_data = node_block[node_index, num_shells]
                         outer_shell = dict(zip(all_res_keys_sorted, outer_shell_data))
-                    
+
                     newNode = self.ALL_RANKS_GRAPH.rxnNode(self.CONFIG,shell_residues, shell_solvents, outer_shell)
 
                     newNodeWeight = weights_block[node_index]
@@ -4098,8 +4113,10 @@ class rxnGraph():
 
     def serialize(self,rank):
 
+        graph_dtype = np.int64
+
         if self.graphLen == 0:
-            return np.empty(shape=(0,), dtype=float)
+            return np.empty(shape=(0,), dtype=graph_dtype)
 
         all_res_keys_sorted = sorted(set(self.CONFIG.config['RESIDUE_LIST'].keys()))
         res_keys_sorted = sorted(set(self.CONFIG.config['RESIDUE_LIST'].keys()) - (set() if not self.CONFIG.configExists('COARSEN_SOLVENT_RESIDUES') else set(self.CONFIG.config['COARSEN_SOLVENT_RESIDUES'])))
@@ -4118,10 +4135,11 @@ class rxnGraph():
         if self.CONFIG.configExists('COARSEN_SOLVENT_RESIDUES'):
             data_length += self.graphLen * shell_len
 
-        graph_data = np.empty(data_length, dtype=int)
+        graph_data = np.empty(data_length, dtype=graph_dtype)
+        #graph_data = np.empty(data_length, dtype=int)
 
         current = 0
-        get_all_res = (itemgetter(*all_res_keys_sorted) if res_len > 0 else None)
+        get_all_res = (itemgetter(*all_res_keys_sorted) if all_res_len > 0 else None)
         get_res = (itemgetter(*res_keys_sorted) if res_len > 0 else None)
         get_sol = (itemgetter(*solvent_keys_sorted) if sol_len > 0 else None) 
 
@@ -4314,9 +4332,7 @@ class configuration():
         self.INPUT_FILE_NAME = cl_input_file
 
         if os.path.isfile(self.INPUT_FILE_NAME):
-            pass
-        elif os.path.isfile(os.path.join(os.getcwd(),self.INPUT_FILE_NAME)):
-            self.INPUT_FILE_NAME = os.path.join(os.getcwd,self.INPUT_FILE_NAME)
+            self.INPUT_FILE_NAME = os.path.abspath(self.INPUT_FILE_NAME)
         else:
             raise configurationError('Command line input file not found')
 
