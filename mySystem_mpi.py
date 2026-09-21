@@ -596,12 +596,11 @@ class system():
                 for index in range(len(PARAMETER)-2):
                     if PARAMETER[index] > PARAMETER[index+1]:
                         raise mySystemError(f"'{parameter_name}' bounds are out of order, syntax is: {self.CONFIG.syntax[parameter_name]}")
-                if len(PARAMETER) > 2:
-                    paired_list = []
-                    for index in range(0,len(PARAMETER),2):
-                        paired_list.append((PARAMETER[index],PARAMETER[index+1]))
-                    PARAMETER = paired_list
-                    self.CONFIG.config[parameter_name] = PARAMETER
+                paired_list = []
+                for index in range(0,len(PARAMETER),2):
+                    paired_list.append((PARAMETER[index],PARAMETER[index+1]))
+                PARAMETER = paired_list
+                self.CONFIG.config[parameter_name] = PARAMETER
             case 'HBOND_TARGET':
                 if PARAMETER is None:
                     return
@@ -1500,7 +1499,7 @@ class system():
         if self.ATOMTYPES.size != self.ELEMENTSYMBOLS.size:
             raise mySystemError('Atom type array size does not match element symbol array size')
         atomtypes = np.unique(self.ATOMTYPES)
-        type_indexes = [atomtypes == type for type in atomtypes]
+        type_indexes = [self.ATOMTYPES == type for type in atomtypes]
         for type,indexes in zip(atomtypes,type_indexes):
             if type in self.ELEMENTS:
                 self.ELEMENTSYMBOLS[indexes] = type
@@ -2806,7 +2805,7 @@ class system():
             return
         
         #Overwrite graphOut to only show most recent reaction graph
-        self.graphOut = open(f"./{self.CONFIG.config['WRITE_DIRECTORY']}/{self.CONFIG.config['RUN_NAME']}/rxn_graph.txt",'w')
+        self.graphOut = open(f"./{self.CONFIG.config['WRITE_DIRECTORY']}/{self.CONFIG.config['RUN_NAME']}/rxn_graph.{self.STEP}.txt",'w')
         self.ALL_RANKS_GRAPH.writeWeights(self.graphOut, start=self.START_STEP, end=self.STEP)
         self.graphOut.flush()
 
@@ -3081,7 +3080,7 @@ class system():
 
             self.reactantClustersWrapper()
             self.reactantGraph()
-            if (self.STEP * self.CONFIG.config['DUMP_FREQ'] % self.GRAPH_WRITE_TIMESTEP) == 0 and self.STEP != 0 and self.CONFIG.config['CREATE_RXN_GRAPH']:
+            if self.CONFIG.config['CREATE_RXN_GRAPH'] and (self.STEP * self.CONFIG.config['DUMP_FREQ'] % self.GRAPH_WRITE_TIMESTEP) == 0 and self.STEP != self.START_FRAME:
                 self.writeRxnNetwork()
             self.extractReactantClusters()
             self.gatherClusterExtractionStats()
@@ -3550,7 +3549,7 @@ class system():
 
         line_index += 2
 
-        while 'REACTION EDGES' not in lines[line_index]:
+        while line_index < file_len and 'REACTION EDGES' not in lines[line_index]:
             line = lines[line_index]
 
             if line.strip() == '':
@@ -3567,43 +3566,44 @@ class system():
                 raise mySystemError(f"Unable to parse edge section from reaction graph file")
             
             line_index += 1
-        
-        line_index += 9
-        edges_header = lines[line_index]
-        if '[Shell 1]' not in lines[line_index] and '[Probability]' not in edges_header:
-            raise mySystemError(f"Unable to parse edge section from reaction graph file")
 
-        WEIGHT_PATTERN = r'\((\d+)\)'
-        data_blocks = parseDataBlocks(edges_header)
-        edge_num_shells = len(data_blocks) - 2
+        if line_index < file_len:
+            line_index += 9
+            edges_header = lines[line_index]
+            if '[Shell 1]' not in lines[line_index] and '[Probability]' not in edges_header:
+                raise mySystemError(f"Unable to parse edge section from reaction graph file")
 
-        line_index += 2
+            WEIGHT_PATTERN = r'\((\d+)\)'
+            data_blocks = parseDataBlocks(edges_header)
+            edge_num_shells = len(data_blocks) - 2
 
-        while line_index < file_len:
-            line = lines[line_index]
+            line_index += 2
 
-            if line.strip() == '':
+            while line_index < file_len:
+                line = lines[line_index]
+
+                if line.strip() == '':
+                    line_index += 1
+                    continue
+
+                shell_list = [line[block_width:data_blocks[index+1]] if index < edge_num_shells else line[block_width:] for index,block_width in enumerate(data_blocks[:-1])]
+                weight_block = '0.0001 (1)' #Dummy weight block only used to instantiate new node
+                if len(shell_list) % 2 != 1:
+                    raise mySystemError(f"Unable to parse node weight section of reaction graph file line: {''.join(shell_list)}")
+                half = len(shell_list)//2
+                node1_list = shell_list[:half] + [weight_block]
+                node2_list = shell_list[half:-1] + [weight_block]
+
+                weight_match = re.findall(WEIGHT_PATTERN, shell_list[-1])
+                if len(weight_match) > 1:
+                    raise mySystemError(f"Unable to parse node weight section of reaction graph file line: {''.join(shell_list)}")
+                edge_weight = int(weight_match[0])
+
+                node1 = self.GRAPH.rxnNode(self.CONFIG,nodeStringList=node1_list)
+                node2 = self.GRAPH.rxnNode(self.CONFIG,nodeStringList=node2_list)
+                self.GRAPH.updateGraphFromExistingEdge(From=node1,To=node2,weight=edge_weight)
+
                 line_index += 1
-                continue
-
-            shell_list = [line[block_width:data_blocks[index+1]] if index < edge_num_shells else line[block_width:] for index,block_width in enumerate(data_blocks[:-1])]
-            weight_block = '0.0001 (1)' #Dummy weight block only used to instantiate new node
-            if len(shell_list) % 2 != 1:
-                raise mySystemError(f"Unable to parse node weight section of reaction graph file line: {''.join(shell_list)}")
-            half = len(shell_list)//2
-            node1_list = shell_list[:half] + [weight_block]
-            node2_list = shell_list[half:-1] + [weight_block]
-
-            weight_match = re.findall(WEIGHT_PATTERN, shell_list[-1])
-            if len(weight_match) > 1:
-                raise mySystemError(f"Unable to parse node weight section of reaction graph file line: {''.join(shell_list)}")
-            edge_weight = int(weight_match[0])
-
-            node1 = self.GRAPH.rxnNode(self.CONFIG,nodeStringList=node1_list)
-            node2 = self.GRAPH.rxnNode(self.CONFIG,nodeStringList=node2_list)
-            self.GRAPH.updateGraphFromExistingEdge(From=node1,To=node2,weight=edge_weight)
-
-            line_index += 1
 
         if self.RANK == 0:
             self.CONFIG.STDOUT.write('\n')
@@ -3626,7 +3626,7 @@ class system():
                 res = self.CONFIG.config['K_LIGAND'][res_index]
                 concentration = self.CONFIG.config['K_LIGAND_CONC'][res_index]
                 if residues_Ks[res] is None:
-                    Ks_string = 'No association events found'
+                    Ks_string = 'K_1: 0'
                 else:
                     Ks_string = ' '.join([f"K_{index+1}: {round(constant/concentration,4)}" for index,constant in enumerate(residues_Ks[res])])
                 if self.RANK == 0:
@@ -4307,6 +4307,7 @@ class configuration():
 
     def __init__(self,cl_input_file:str=None):
 
+        self.profiler = cProfile.Profile()
         self.COMM = MPI.COMM_WORLD
         self.RANK = self.COMM.Get_size()
 
@@ -4337,8 +4338,8 @@ class configuration():
 
             #Analysis output / cluster extraction parameters----------
             'CREATE_RXN_GRAPH':False,
-            'WRITE_DIRECTORY':'OUTPUT',
-            'RUN_NAME':'output',
+            'WRITE_DIRECTORY':None,
+            'RUN_NAME':None,
             'OUTPUT_TYPE':'XYZ',
             'CLUSTERS_TO_EXTRACT':0,
             'REACTANT_TO_PRINT':None,
@@ -4672,17 +4673,43 @@ class configuration():
         inputOut.flush()
 
     def outputType(self):
-        if "SLURM_JOB_ID" in os.environ:
-            self.STDOUT = open(f"./{self.config['WRITE_DIRECTORY']}/{self.config['RUN_NAME']}/out",'w')
-            self.STDERR = open(f"./{self.config['WRITE_DIRECTORY']}/{self.config['RUN_NAME']}/err",'w')
-            self.METAOUT = open(f"./{self.config['WRITE_DIRECTORY']}/{self.config['RUN_NAME']}/meta",'w')
-            # sys.stdout = open(f"./{self.config['WRITE_DIRECTORY']}/{self.config['RUN_NAME']}/out",'w')
-            # sys.stderr = open(f"./{self.config['WRITE_DIRECTORY']}/{self.config['RUN_NAME']}/err",'w')
+        if "SLURM_JOB_ID" in os.environ and self.configExists('WRITE_DIRECTORY') and self.configExists('RUN_NAME'):
+            path = (self.config['WRITE_DIRECTORY'], self.config['RUN_NAME'])
             if self.RANK == 0:
-                self.STDOUT.write(f'SLURM JOD ID: {os.environ["SLURM_JOB_ID"]}',flush=True)
-        else:
-            self.STDOUT = sys.stdout
-            self.STDERR = sys.stderr
+                path = os.path.join(os.getcwd(), self.config['WRITE_DIRECTORY'], self.config['RUN_NAME'])
+                os.makedirs(path, exist_ok=True)
+                self.writeFullInput()
+            self.COMM.Barrier()
+            self.STDOUT = open(os.path.join(*path,'out'),'w')
+            self.STDERR = open(os.path.join(*path,'err'),'w')
+            self.METAOUT = open(os.path.join(*path,'meta'),'w')
+            if self.RANK == 0:
+                self.STDOUT.write(f'SLURM JOD ID: {os.environ["SLURM_JOB_ID"]}')
+            return
+        self.STDOUT = sys.stdout
+        self.STDERR = sys.stderr
+
+    def profile(self,on=0):
+
+        if self.configExists('PROFILE') and self.config['PROFILE']:
+            if on:
+                self.profiler.enable()
+                return
+         
+            self.profiler.disable()
+
+            import io,pstats
+            # Create a StringIO object to capture the output
+            s = io.StringIO()
+
+            # Create a Stats object and print the statistics
+            sortby = pstats.SortKey.CUMULATIVE
+            ps = pstats.Stats(self.profiler, stream=s).sort_stats(sortby)
+            ps.print_stats()
+
+            # Print the captured output
+            if self.RANK == 0:
+                self.STDOUT.write(s.getvalue(),flush=True)
 
 def main():
     COMM = MPI.COMM_WORLD
@@ -4722,61 +4749,46 @@ def main():
         config_manager.writeFullInput()
         exit()
     
-    config_manager = configuration()
-    if args.input_file_path:
-        config_manager = configuration(args.input_file_path)
-        config_manager.loadCommandLine()
-        config_manager.readInputFile()
-        config_manager.checkInputParameters()
+    if not args.input_file_path:
+        exit()
 
-    if config_manager.configExists('PROFILE') and config_manager.config['PROFILE']:
-        profiler = cProfile.Profile()
-        profiler.enable()
+    config_manager = configuration(args.input_file_path)
+
+    config_manager.loadCommandLine()
+    config_manager.readInputFile()
+    config_manager.checkInputParameters()
+    config_manager.outputType()
+    config_manager.profile(1)
+    if RANK == 0:
+        if NP > 1:
+            config_manager.STDOUT.write(f'Utilizing {NP} processes\n')
+        else:
+            config_manager.STDOUT.write(f'Utilizing {NP} process\n')
 
     if args.read_graph:
+        if not os.path.isfile(args.read_graph):
+            config_manager.STDOUT.write(f"File '{args.read_graph}' not found")
+            exit()
         graph_read_system = system(config_manager)
         graph_read_system.readGraphFile(args.read_graph)
         graph_read_system.graphAnalysis()
-    else:
-        if RANK == 0:
-            path = os.path.join(os.getcwd(), config_manager.config['WRITE_DIRECTORY'], config_manager.config['RUN_NAME'])
-            os.makedirs(path, exist_ok=True)
-            config_manager.writeFullInput()
-        COMM.Barrier()
+        config_manager.profile(0)
+        exit()
 
-        config_manager.outputType()
+    #Create, initialize, and run Reaction System
+    reaction_system = system(config_manager)
 
-        if RANK == 0:
-            config_manager.STDOUT.write(f'Running using {NP} processor(s)\n')
-    
-        #Create, initialize, and run Reaction System
-        reaction_system = system(config_manager)
+    #Initialize system from data file
+    reaction_system.initialize()
+    #Read/process system trajectory file
+    reaction_system.run()
 
-        #Initialize system from data file
-        reaction_system.initialize()
+    #Wrap up processes
+    reaction_system.finallize()
+    config_manager.writeFullInput()
+    config_manager.profile(0)
 
-        #Read/process system trajectory file
-        reaction_system.run()
-
-        reaction_system.finallize()
-
-        config_manager.writeFullInput()
-
-    if config_manager.configExists('PROFILE') and config_manager.config['PROFILE']:
-        profiler.disable()
-
-        import io,pstats
-        # Create a StringIO object to capture the output
-        s = io.StringIO()
-
-        # Create a Stats object and print the statistics
-        sortby = pstats.SortKey.CUMULATIVE
-        ps = pstats.Stats(profiler, stream=s).sort_stats(sortby)
-        ps.print_stats()
-
-        # Print the captured output
-        if RANK == 0:
-            config_manager.STDOUT.write(s.getvalue(),flush=True)
+    exit()
 
 if __name__ == "__main__":
     main()

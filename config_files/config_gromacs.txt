@@ -45,7 +45,7 @@ CONSERVE_COORDINATION = None#{UYL:{SOL:36}, NIT:None}              #Residue(s) a
 COARSEN_SOLVENT_RESIDUES = [SOL,HEXA]                                    #Residues to corsen when building reaction graph. Will not trace coordination changes from these species, instead storing a range 
 EXCLUDE_SOLVENT_RESIDUES = None#[HEXA]
 
-FILTER_REACTANTS_BY_Z = (55,70,115,130)     #Z bounds within which reactants must be to be filtered for extraction or reaction graph, must be in angstroms. Multiple bounds may be used. syntax = (z_lower_bound_1, z_upper_bound_1) or (z_lower_bound_1, z_upper_bound_1,z_lower_bound_2, z_upper_bound_2,...) where z_lower_bound_1 < z_upper_bound_1 < z_lower_bound_2 < z_upper_bound_2
+FILTER_REACTANTS_BY_Z = (55,70)#(55,70,115,130)     #Z bounds within which reactants must be to be filtered for extraction or reaction graph, must be in angstroms. Multiple bounds may be used. syntax = (z_lower_bound_1, z_upper_bound_1) or (z_lower_bound_1, z_upper_bound_1,z_lower_bound_2, z_upper_bound_2,...) where z_lower_bound_1 < z_upper_bound_1 < z_lower_bound_2 < z_upper_bound_2
 HBOND_TARGET = None#37.5
 HBOND_DEV = None#1
 SPECTATOR_TARGET = None#{Li:1.2,NIT:3.2}
