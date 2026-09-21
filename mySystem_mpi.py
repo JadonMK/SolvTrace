@@ -4309,13 +4309,21 @@ class configuration():
 
         self.profiler = cProfile.Profile()
         self.COMM = MPI.COMM_WORLD
-        self.RANK = self.COMM.Get_size()
+        self.RANK = self.COMM.Get_rank()
 
         self.INPUT_FILE_NAME = cl_input_file
+
+        if os.path.isfile(self.INPUT_FILE_NAME):
+            pass
+        elif os.path.isfile(os.path.join(os.getcwd(),self.INPUT_FILE_NAME)):
+            self.INPUT_FILE_NAME = os.path.join(os.getcwd,self.INPUT_FILE_NAME)
+        else:
+            raise configurationError('Command line input file not found')
 
         self.STDOUT = None #Write location for standard output
         self.STDERR = None #Write location for standard output
         self.METAOUT = None #Write location for performance analytics
+        self.CONFIGOUT = None #Write location for config_ file (run input copy)
 
         self.config = {
             #Input file reading parameters----------
@@ -4557,7 +4565,7 @@ class configuration():
             raise configurationError("Missing command line input file. Run command is 'python mySystem_mpi.py config_file_name' (for serial) or 'mpiexec -n NUM_CORES python mySystem_mpi.py config_file_name' (for parallel)")
         elif len(sys.argv) > 3:
             if self.RANK == 0:
-                self.CONFIG.STDOUT.write('WARNING: Excess command line arguments provided. Arguments beyond command line intput file name will be ignored\n')
+                self.STDOUT.write('WARNING: Excess command line arguments provided. Arguments beyond command line intput file name will be ignored\n')
         else:
             self.INPUT_FILE_NAME = sys.argv[2]
             if os.path.isfile(self.INPUT_FILE_NAME):
@@ -4667,27 +4675,37 @@ class configuration():
                 raise configurationError(f"Invalid input for '{parameter_name}': {self.config[parameter_name]}, syntax is {self.syntax[parameter_name]}")
     
     def writeFullInput(self):
-        inputOut = open(f"./{self.config['WRITE_DIRECTORY']}/{self.config['RUN_NAME']}/config_",'w')
+        
         for parameter_name,parameter, in self.config.items():
-            inputOut.write(f'{parameter_name} = {parameter}\t\t#{self.comments[parameter_name]}, syntax- {self.syntax[parameter_name]}\n')
-        inputOut.flush()
+            self.CONFIGOUT.write(f'{parameter_name} = {parameter}\t\t#{self.comments[parameter_name]}, syntax- {self.syntax[parameter_name]}\n')
+        self.CONFIGOUT.flush()
 
-    def outputType(self):
-        if "SLURM_JOB_ID" in os.environ and self.configExists('WRITE_DIRECTORY') and self.configExists('RUN_NAME'):
-            path = (self.config['WRITE_DIRECTORY'], self.config['RUN_NAME'])
+    def outputType(self,graph_analysis=None):
+        path = []
+        if self.configExists('WRITE_DIRECTORY'):
+            path.append(self.config['WRITE_DIRECTORY'])
+        if self.configExists('RUN_NAME'):
+            path.append(self.config['RUN_NAME'])
+        path = os.path.join('',*path)
+        if self.RANK == 0 and path:
+            os.makedirs(path, exist_ok=True)
+        self.COMM.Barrier()
+
+        if "SLURM_JOB_ID" in os.environ and graph_analysis is None:
             if self.RANK == 0:
-                path = os.path.join(os.getcwd(), self.config['WRITE_DIRECTORY'], self.config['RUN_NAME'])
-                os.makedirs(path, exist_ok=True)
+                self.STDOUT = open(os.path.join(path,'out'),'w')
+                self.STDERR = open(os.path.join(path,'err'),'w')
+                self.METAOUT = open(os.path.join(path,'meta'),'w')
+                self.CONFIGOUT = open(os.path.join(path,'config_'),'w')
+                self.STDOUT.write(f'SLURM JOD ID: {os.environ["SLURM_JOB_ID"]}')
                 self.writeFullInput()
             self.COMM.Barrier()
-            self.STDOUT = open(os.path.join(*path,'out'),'w')
-            self.STDERR = open(os.path.join(*path,'err'),'w')
-            self.METAOUT = open(os.path.join(*path,'meta'),'w')
-            if self.RANK == 0:
-                self.STDOUT.write(f'SLURM JOD ID: {os.environ["SLURM_JOB_ID"]}')
             return
+
         self.STDOUT = sys.stdout
         self.STDERR = sys.stderr
+        if graph_analysis is None:
+            self.CONFIGOUT = open(os.path.join(path,'config_'),'w')
 
     def profile(self,on=0):
 
@@ -4754,10 +4772,10 @@ def main():
 
     config_manager = configuration(args.input_file_path)
 
-    config_manager.loadCommandLine()
+    #config_manager.loadCommandLine()
     config_manager.readInputFile()
     config_manager.checkInputParameters()
-    config_manager.outputType()
+    config_manager.outputType(args.read_graph)
     config_manager.profile(1)
     if RANK == 0:
         if NP > 1:
@@ -4785,7 +4803,6 @@ def main():
 
     #Wrap up processes
     reaction_system.finallize()
-    config_manager.writeFullInput()
     config_manager.profile(0)
 
     exit()
