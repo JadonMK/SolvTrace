@@ -136,9 +136,13 @@ class system():
 
         #All atom gromacs indexes set for making .ndx files
         self.GMX_SYSTEM_INDEXES = None
+
+        #Writing timestep information fix
+        self.EXTRACTION_TIMESTEP = 20000 #timestep for writing clusters in femtoseconds
+        self.GRAPH_WRITE_TIMESTEP = 5000 #timestep for writing reaction graph in femtoseconds
         
         #Extraction failure statistics dict:
-        self.EXTRACT_FAIL_STATS = {
+        self.EXTRACT_DROP_STATS = {
             #Not enough time has elapsed since last extraction:
             'WRITE_FAILED_OVER_EXTRACT_FREQ':0,
             'TOTAL_WRITE_FAILED_OVER_EXTRACT_FREQ':0,
@@ -163,12 +167,24 @@ class system():
             'WRITE_FAILED_UNDER_HBOND_COUNT':0,
             'TOTAL_WRITE_FAILED_UNDER_HBOND_COUNT':0}
 
-        # self.extractCoordOut = open(f"./{self.CONFIG.config['WRITE_DIRECTORY']}/{self.CONFIG.config['RUN_NAME']}/rank_{self.RANK}_coord.txt",'w')
-        # self.failedExtractCoordOut = open(f"./{self.CONFIG.config['WRITE_DIRECTORY']}/{self.CONFIG.config['RUN_NAME']}/rank_{self.RANK}_failed_coord.txt",'w')
+        if self.RANK == 0:
+            self.EXTRACT_DROP_STATS_DESCRIPTIONS = {
+                #Not enough time has elapsed since last extraction:
+                'WRITE_FAILED_OVER_EXTRACT_FREQ':('Over-extraction', f'Elapsed time since last extraction < {self.EXTRACTION_TIMESTEP/1000} ps wait time.'),
+                #The inner solvation shells contain an excluded residue:
+                'WRITE_FAILED_INNER_EXCLUDE_RES':('Excluded residue (EXCLUDE_SOLVENT_RESIDUES)',f"A reside excluded by 'EXCLUDE_SOLVENT_RESIDUES' was found in the first {self.CONFIG.config['REACTION_SHELLS']} inner shells."),
+                ##The inner solvation shells contain a non-requested residue:
+                'WRITE_FAILED_INNER_NONCONSERVE':('Excluded residue (CONSERVE_COORDINATION)',f"A reside excluded by 'CONSERVE_COORDINATION' was found in the first {self.CONFIG.config['REACTION_SHELLS']} inner shells."),
+                #The inner solvation shells + ligand conserved 1st shell contain too many of a conserved residue:
+                'WRITE_FAILED_FIRSTOUTER_NONCONSERVE':('Outer shell over-coordinated',f"The first outer shell is over coordinated, shell {self.CONFIG.config['REACTION_SHELLS']} ligands will not be fully solvated."),
+                #Upon inclusion of the outer solvation shells, the cluster is contains too few conserved residues:
+                'WRITE_FAILED_SECONDOUTER_UNDERCOORD':('Outer shell under-coordinated','The outer shells contain too few solvents to conserve composition.'),
+                #The first solvation shell of a conserved ligand contains more than conserved solvent residues (such as a spectator ion):
+                'WRITE_FAILED_FIRSTOUTER_NONSOLVENT':('First outer shell solute',f"The first shell of a ligand in shell {self.CONFIG.config['REACTION_SHELLS']} cannot be included as it is contains a non-conserved solvent."),
+                #Cluster hydrogen bonding is outside requested range: 
+                'WRITE_FAILED_OVER_HBOND_COUNT':('Exceeded h-bond count','The cluster to be extracted exceeds the requested h-bond range.'),
+                'WRITE_FAILED_UNDER_HBOND_COUNT':('Under h-bond count','The cluster to be extracted has too few h-bonds to meet the requested range.')}
 
-        #Writing timestep information fix
-        self.EXTRACTION_TIMESTEP = 20000 #timestep for writing clusters in femtoseconds
-        self.GRAPH_WRITE_TIMESTEP = 5000 #timestep for writing reaction graph in femtoseconds
         self.CLUSTER_WRITE_OFFSET = 0
         if (self.TOTAL_CLUSTERS_TO_EXTRACT > 0) and (self.TOTAL_CLUSTERS_TO_EXTRACT != -1):
             for rank in range(self.RANK):
@@ -234,10 +250,10 @@ class system():
             self.solvation_shells.extend([set() for _ in range((shell_index+1)-len(self.solvation_shells))])
             if isinstance(new_contents,set):
                 self.solvation_shells[shell_index].update(new_contents)
-                return
+                return self.solvation_shells[shell_index]
             elif isinstance(new_contents,np.int32):
                 self.solvation_shells[shell_index].add(new_contents)
-                return
+                return self.solvation_shells[shell_index]
             raise mySystemError('molecule.updateSolvationShells cannot take non-set or integer argument')
 
         def resetSolvationShells(self):
@@ -517,7 +533,7 @@ class system():
                 if PARAMETER is None or PARAMETER == []:
                     if self.CONFIG.config['CLUSTERS_TO_EXTRACT'] == -1 or self.CONFIG.config['CLUSTERS_TO_EXTRACT'] > 0:
                         if self.RANK == 0:
-                            self.CONFIG.STDOUT.write('WARNING: No reactant state to extract defined, no clusters will be extracted\n')
+                            raise mySystemError('No reactant state to extract defined\n')
                         self.CONFIG.config['CLUSTERS_TO_EXTRACT'] = 0
                     return
                 if self.rankClustersExtracted():
@@ -1483,27 +1499,27 @@ class system():
         #Creates send and recieve buffer space on each process for the cluster extraction counts, distributes the counts, and updates the total clusters written from the sum of the counts
         sendcount = np.int32([self.RANK_CLUSTERS_WRITTEN, 
                               self.REACTANTS_TO_WRITE_FOUND, 
-                              self.EXTRACT_FAIL_STATS['WRITE_FAILED_OVER_EXTRACT_FREQ'], 
-                              self.EXTRACT_FAIL_STATS['WRITE_FAILED_INNER_EXCLUDE_RES'], 
-                              self.EXTRACT_FAIL_STATS['WRITE_FAILED_INNER_NONCONSERVE'], 
-                              self.EXTRACT_FAIL_STATS['WRITE_FAILED_FIRSTOUTER_NONCONSERVE'], 
-                              self.EXTRACT_FAIL_STATS['WRITE_FAILED_FIRSTOUTER_NONSOLVENT'], 
-                              self.EXTRACT_FAIL_STATS['WRITE_FAILED_SECONDOUTER_UNDERCOORD'],
-                              self.EXTRACT_FAIL_STATS['WRITE_FAILED_OVER_HBOND_COUNT'],
-                              self.EXTRACT_FAIL_STATS['WRITE_FAILED_UNDER_HBOND_COUNT']]) #Number of clusters extracted as a 32-bit integer
+                              self.EXTRACT_DROP_STATS['WRITE_FAILED_OVER_EXTRACT_FREQ'], 
+                              self.EXTRACT_DROP_STATS['WRITE_FAILED_INNER_EXCLUDE_RES'], 
+                              self.EXTRACT_DROP_STATS['WRITE_FAILED_INNER_NONCONSERVE'], 
+                              self.EXTRACT_DROP_STATS['WRITE_FAILED_FIRSTOUTER_NONCONSERVE'], 
+                              self.EXTRACT_DROP_STATS['WRITE_FAILED_FIRSTOUTER_NONSOLVENT'], 
+                              self.EXTRACT_DROP_STATS['WRITE_FAILED_SECONDOUTER_UNDERCOORD'],
+                              self.EXTRACT_DROP_STATS['WRITE_FAILED_OVER_HBOND_COUNT'],
+                              self.EXTRACT_DROP_STATS['WRITE_FAILED_UNDER_HBOND_COUNT']]) #Number of clusters extracted as a 32-bit integer
         send_stat_num = sendcount.size
         all_counts = np.empty(self.NP*send_stat_num,dtype=np.int32) #Numpy array initialized to hold the 32-bit int cluster count from each process (only on RANK ==0)
         self.COMM.Allgather([sendcount,MPI.INT],[all_counts,MPI.INT]) #Gather the cluster counts from each process and store them in all_counts, this is a synchronous process
         self.TOTAL_CLUSTERS_WRITTEN = sum(all_counts[::send_stat_num]) #Total clusters extracted = sum of all individual extraction counts
         self.TOTAL_REACTANTS_TO_WRITE_FOUND = sum(all_counts[1::send_stat_num])
-        self.EXTRACT_FAIL_STATS['TOTAL_WRITE_FAILED_OVER_EXTRACT_FREQ'] = sum(all_counts[2::send_stat_num])
-        self.EXTRACT_FAIL_STATS['TOTAL_WRITE_FAILED_INNER_EXCLUDE_RES'] = sum(all_counts[3::send_stat_num])
-        self.EXTRACT_FAIL_STATS['TOTAL_WRITE_FAILED_INNER_NONCONSERVE'] = sum(all_counts[4::send_stat_num])
-        self.EXTRACT_FAIL_STATS['TOTAL_WRITE_FAILED_FIRSTOUTER_NONCONSERVE'] = sum(all_counts[5::send_stat_num])
-        self.EXTRACT_FAIL_STATS['TOTAL_WRITE_FAILED_FIRSTOUTER_NONSOLVENT'] = sum(all_counts[6::send_stat_num])
-        self.EXTRACT_FAIL_STATS['TOTAL_WRITE_FAILED_SECONDOUTER_UNDERCOORD'] = sum(all_counts[7::send_stat_num])
-        self.EXTRACT_FAIL_STATS['TOTAL_WRITE_FAILED_OVER_HBOND_COUNT'] = sum(all_counts[8::send_stat_num])
-        self.EXTRACT_FAIL_STATS['TOTAL_WRITE_FAILED_UNDER_HBOND_COUNT'] = sum(all_counts[9::send_stat_num])
+        self.EXTRACT_DROP_STATS['TOTAL_WRITE_FAILED_OVER_EXTRACT_FREQ'] = sum(all_counts[2::send_stat_num])
+        self.EXTRACT_DROP_STATS['TOTAL_WRITE_FAILED_INNER_EXCLUDE_RES'] = sum(all_counts[3::send_stat_num])
+        self.EXTRACT_DROP_STATS['TOTAL_WRITE_FAILED_INNER_NONCONSERVE'] = sum(all_counts[4::send_stat_num])
+        self.EXTRACT_DROP_STATS['TOTAL_WRITE_FAILED_FIRSTOUTER_NONCONSERVE'] = sum(all_counts[5::send_stat_num])
+        self.EXTRACT_DROP_STATS['TOTAL_WRITE_FAILED_FIRSTOUTER_NONSOLVENT'] = sum(all_counts[6::send_stat_num])
+        self.EXTRACT_DROP_STATS['TOTAL_WRITE_FAILED_SECONDOUTER_UNDERCOORD'] = sum(all_counts[7::send_stat_num])
+        self.EXTRACT_DROP_STATS['TOTAL_WRITE_FAILED_OVER_HBOND_COUNT'] = sum(all_counts[8::send_stat_num])
+        self.EXTRACT_DROP_STATS['TOTAL_WRITE_FAILED_UNDER_HBOND_COUNT'] = sum(all_counts[9::send_stat_num])
 
     def makeElementSymbolList(self):
         if not self.CONFIG.configExists('OUTPUT_TYPE') or ('XYZ' not in self.CONFIG.config['OUTPUT_TYPE'] and 'QCHEM' not in self.CONFIG.config['OUTPUT_TYPE']): #If no output file that uses element symbol labeling is requested simply use user atom type labels
@@ -2316,8 +2332,8 @@ class system():
                 if self.CONFIG.configExists('CONSERVE_COORDINATION'):
                     
                     if (shell_num <= self.CONFIG.config['REACTION_SHELLS']):
-                        #Update reactant with new shell
-                        reactant.updateSolvationShells(shell_index,SHELL)
+                        #Update reactant with new shell and update SHELL for cases where the shell was previously incomplete
+                        SHELL = reactant.updateSolvationShells(shell_index,SHELL)
 
                         shell_list = np.array(list(SHELL))
                         shell_res_list = self.RESIDUES[shell_list]
@@ -2348,7 +2364,7 @@ class system():
                                 if time_to_extract:
                                     EXTRACT_SHELL = self.createExtractableCluster(reactant,shell_key='inner')
                                 else:
-                                    self.EXTRACT_FAIL_STATS['WRITE_FAILED_OVER_EXTRACT_FREQ'] += 1
+                                    self.EXTRACT_DROP_STATS['WRITE_FAILED_OVER_EXTRACT_FREQ'] += 1
                                 
                                 if EXTRACT_SHELL is None and making_rxn_graph: #If extraction fails at this step but a rxn graph is being made, reduce the coordination find request to only the last shell ligands 
                                     FIND_COORDINATION = LAST_SHELL_LIGANDS
@@ -2358,17 +2374,16 @@ class system():
                                 FIND_COORDINATION = None
                                 CONTINUE = False
                         case 1: #The shell # now contains the full outer shell or only the outer shells of each ligand
-                            #Update reactant with new shell
-                            reactant.updateSolvationShells(shell_index,SHELL)
+                            #Update reactant with new shell and update SHELL for cases where the shell was previously incomplete
+                            SHELL = reactant.updateSolvationShells(shell_index,SHELL)
 
                             INNER_SHELLS = reactant.total_shells
-                            self.calculateOuterCoordination(reactant,SHELL) #take out
                             if LAST_SHELL_LIGANDS is not None:
                                 LIGAND_FIRST_SHELL = {mol for ligand in LAST_SHELL_LIGANDS for mol in self.MOLECULES[ligand].solvation_shells[0]} - INNER_SHELLS
                                 REM_OUTER_SHELL = SHELL - LIGAND_FIRST_SHELL
 
                                 if making_rxn_graph:
-                                    #self.calculateOuterCoordination(reactant,LIGAND_FIRST_SHELL) #put back
+                                    self.calculateOuterCoordination(reactant,LIGAND_FIRST_SHELL)
                                     self.countClusterWaterHBonds(reactant,extract_cluster=False,ligand_outer_shells=LIGAND_FIRST_SHELL)
 
                             if not (extractable_cluster and time_to_extract and not finished_extracting and EXTRACT_SHELL is not None):
@@ -2384,8 +2399,8 @@ class system():
                                 else:
                                     FIND_COORDINATION = EXTRACT_SHELL
                         case 2:
-                            #Update reactant with new shell
-                            reactant.updateSolvationShells(shell_index,SHELL)
+                            #Update reactant with new shell and update SHELL for cases where the shell was previously incomplete
+                            SHELL = reactant.updateSolvationShells(shell_index,SHELL)
                             
                             if LAST_SHELL_LIGANDS is not None:
                                 LIGAND_SECOND_SHELL = {shell_2_mol for shell_1_mol in LIGAND_FIRST_SHELL for shell_2_mol in self.MOLECULES[shell_1_mol].solvation_shells[0]} - INNER_SHELLS - LIGAND_FIRST_SHELL
@@ -2402,8 +2417,8 @@ class system():
                             else:
                                 CONTINUE = False
                         case 3:
-                            #Update reactant with new shell
-                            reactant.updateSolvationShells(shell_index,SHELL)
+                            #Update reactant with new shell and update SHELL for cases where the shell was previously incomplete
+                            SHELL = reactant.updateSolvationShells(shell_index,SHELL)
 
                             EXTRACT_SHELL = self.createExtractableCluster(reactant,shell_key='outer',shell=REM_OUTER_SHELL)
                             if EXTRACT_SHELL is None:
@@ -2416,12 +2431,12 @@ class system():
                                 FIND_COORDINATION = EXTRACT_SHELL #H-Bond analysis will not work with the above code uncommented, does not find (outer shell) - (outer_shell) H-bonds                        case 4:
                         case 4:    
                             #Update reactant second outer shell
-                            reactant.updateSolvationShells(self.CONFIG.config['REACTION_SHELLS']+1,SHELL)
+                            SHELL = reactant.updateSolvationShells(self.CONFIG.config['REACTION_SHELLS']+1,SHELL)
 
                             CONTINUE = False
                 else:
                     #Update reactant with new shell
-                    reactant.updateSolvationShells(shell_index,SHELL)
+                    SHELL = reactant.updateSolvationShells(shell_index,SHELL)
 
                     match outer_shell_num:
                         case 0: #The shell # is now equal to that requested --> determine reactant coordination
@@ -2459,9 +2474,9 @@ class system():
                     hbonds_dev = reactant.extract_shells_hbonds - self.CONFIG.config['HBOND_TARGET']
                     if abs(hbonds_dev) > self.CONFIG.config['HBOND_DEV']:
                         if hbonds_dev > 0:
-                            self.EXTRACT_FAIL_STATS['WRITE_FAILED_OVER_HBOND_COUNT'] += 1
+                            self.EXTRACT_DROP_STATS['WRITE_FAILED_OVER_HBOND_COUNT'] += 1
                         else:
-                            self.EXTRACT_FAIL_STATS['WRITE_FAILED_UNDER_HBOND_COUNT'] += 1
+                            self.EXTRACT_DROP_STATS['WRITE_FAILED_UNDER_HBOND_COUNT'] += 1
                         self.updateReactantExtractClock(reactant,zero=True)
                         reactant.extract_shells = None
                         return None
@@ -2469,9 +2484,9 @@ class system():
                     spectator_devs = {ion:(reactant.outer_shell[ion] - self.CONFIG.config['SPECTATOR_TARGET'][ion]) for ion in self.CONFIG.config['SPECTATOR_TARGET'].keys()}
                     if any([(abs(spectator_devs[ion]) > self.CONFIG.config['SPECTATOR_DEV'][ion]) for ion in self.CONFIG.config['SPECTATOR_DEV']]):
                         # if hbonds_dev > 0:
-                        #     self.EXTRACT_FAIL_STATS['WRITE_FAILED_OVER_HBOND_COUNT'] += 1
+                        #     self.EXTRACT_DROP_STATS['WRITE_FAILED_OVER_HBOND_COUNT'] += 1
                         # else:
-                        #     self.EXTRACT_FAIL_STATS['WRITE_FAILED_UNDER_HBOND_COUNT'] += 1
+                        #     self.EXTRACT_DROP_STATS['WRITE_FAILED_UNDER_HBOND_COUNT'] += 1
                         self.updateReactantExtractClock(reactant,zero=True)
                         reactant.extract_shells = None
                         return None
@@ -2650,7 +2665,7 @@ class system():
     
     def checkCoordinationConservation(self):
         if self.CURRENT_CONSERVED_RESIDUES_COUNTS.keys() != self.CURRENT_CONSERVED_RESIDUES_TARGETS.keys():
-            self.EXTRACT_FAIL_STATS['WRITE_FAILED_FIRSTOUTER_NONSOLVENT'] += 1
+            self.EXTRACT_DROP_STATS['WRITE_FAILED_FIRSTOUTER_NONSOLVENT'] += 1
             return False
         # zeros = True
         for specie,count in self.CURRENT_CONSERVED_RESIDUES_TARGETS.items():
@@ -2695,7 +2710,7 @@ class system():
                         self.updateReactantExtractClock(reactant,zero=True)
                         self.calculateLocalPeakMemUse()
                         reactant.extract_shells = None
-                        self.EXTRACT_FAIL_STATS['WRITE_FAILED_INNER_NONCONSERVE'] += 1
+                        self.EXTRACT_DROP_STATS['WRITE_FAILED_INNER_NONCONSERVE'] += 1
                         return None
             else:
                 shell_list = np.array(list(NEW_SHELL))
@@ -2706,10 +2721,10 @@ class system():
                     #First outer solvation shell contains non-conserved residues making it imposible to complete, exit
                     for residue_type,molecule_index_list in outer_shell_by_res.items():
                         self.updateCoordinationConservationCounts(residue_type,len(molecule_index_list))
-                    current_non_solvent_failed_count = self.EXTRACT_FAIL_STATS['WRITE_FAILED_FIRSTOUTER_NONSOLVENT']
+                    current_non_solvent_failed_count = self.EXTRACT_DROP_STATS['WRITE_FAILED_FIRSTOUTER_NONSOLVENT']
                     if not self.checkCoordinationConservation():
-                        if self.EXTRACT_FAIL_STATS['WRITE_FAILED_FIRSTOUTER_NONSOLVENT'] == current_non_solvent_failed_count:
-                            self.EXTRACT_FAIL_STATS['WRITE_FAILED_FIRSTOUTER_NONCONSERVE'] += 1
+                        if self.EXTRACT_DROP_STATS['WRITE_FAILED_FIRSTOUTER_NONSOLVENT'] == current_non_solvent_failed_count:
+                            self.EXTRACT_DROP_STATS['WRITE_FAILED_FIRSTOUTER_NONCONSERVE'] += 1
                         self.updateReactantExtractClock(reactant,zero=True)
                         self.calculateLocalPeakMemUse()
                         reactant.extract_shells = None
@@ -2728,7 +2743,7 @@ class system():
                                 self.updateReactantExtractClock(reactant,zero=True)
                                 self.calculateLocalPeakMemUse()
                                 reactant.extract_shells = None
-                                self.EXTRACT_FAIL_STATS['WRITE_FAILED_SECONDOUTER_UNDERCOORD'] += 1
+                                self.EXTRACT_DROP_STATS['WRITE_FAILED_SECONDOUTER_UNDERCOORD'] += 1
                                 return None
                             if shell_key == 'ligand_second':
                                 self.updateCoordinationConservationCounts(residue_type,len(molecule_index_list))
@@ -2758,7 +2773,7 @@ class system():
                     self.updateReactantExtractClock(reactant,zero=True)
                     self.calculateLocalPeakMemUse()
                     reactant.extract_shells = None
-                    self.EXTRACT_FAIL_STATS['WRITE_FAILED_INNER_EXCLUDE_RES'] += 1
+                    self.EXTRACT_DROP_STATS['WRITE_FAILED_INNER_EXCLUDE_RES'] += 1
                     return None
 
         if isinstance(NEW_SHELL,list):
@@ -2825,6 +2840,62 @@ class system():
         self.graphOut.flush()
 
         self.calculateLocalPeakMemUse()
+
+    def writeExtractionStatistics(self):
+
+        if self.RANK != 0:
+            return
+        
+        #Extraction drop statistics dict format:
+        # self.EXTRACT_DROP_STATS_DESCRIPTIONS = {
+        #     #Not enough time has elapsed since last extraction:
+        #     'WRITE_FAILED_OVER_EXTRACT_FREQ':(),
+        #     #The inner solvation shells contain an excluded residue:
+        #     'WRITE_FAILED_INNER_EXCLUDE_RES':(),
+        #     ##The inner solvation shells contain a non-requested residue:
+        #     'WRITE_FAILED_INNER_NONCONSERVE':(),
+        #     #The inner solvation shells + ligand conserved 1st shell contain too many of a conserved residue:
+        #     'WRITE_FAILED_FIRSTOUTER_NONCONSERVE':(),
+        #     #The first solvation shell of a conserved ligand contains more than conserved solvent residues (such as a spectator ion):
+        #     'WRITE_FAILED_FIRSTOUTER_NONSOLVENT':(),
+        #     #Upon inclusion of the outer solvation shells, the cluster is contains too few conserved residues:
+        #     'WRITE_FAILED_SECONDOUTER_UNDERCOORD':(),
+        #     #Cluster hydrogen bonding is outside requested range: 
+        #     'WRITE_FAILED_OVER_HBOND_COUNT':(),
+        #     'WRITE_FAILED_UNDER_HBOND_COUNT':(),}
+        
+        headers = ("Drop type", "Total dropped", "Description")
+
+        rows = [(label, str(self.EXTRACT_DROP_STATS[key]), description) for key, (label, description) in self.EXTRACT_DROP_STATS_DESCRIPTIONS.items()]
+
+        # Determine the width needed for each column.
+        widths = [max(len(headers[column]), *(len(row[column]) for row in rows)) for column in range(3)]
+
+        def centered_row(values):
+            return (
+                f"| {values[0]:^{widths[0]}} "
+                f"| {values[1]:^{widths[1]}} "
+                f"| {values[2]:^{widths[2]}} |"
+            )
+
+        # Colons center each column when rendered as Markdown.
+        separator = (
+            f"|:{'-' * widths[0]}:"
+            f"|:{'-' * widths[1]}:"
+            f"|:{'-' * widths[2]}:|"
+        )
+
+        lines = [
+            "# Dropped cluster statistics.",
+            "",
+            "This table summarizes the number of clusters that were dropped from extraction and the individual reasons for dropping."
+            "",
+            centered_row(headers),
+            separator,
+            *(centered_row(row) for row in rows),
+        ]
+
+        self.CONFIG.overwrite('meta','\n'.join(lines))
 
     def allPBCDistance(self,xi,yi,zi,xj_array,yj_array,zj_array, returnComponents=False):
         #Find radial distance between point i (defined by xyz) and points j (defined by xj_array,yj_array, and zj_array) and returns distance array equal in length to j arrays using pbc distance finding snippet from Hemanth Haridas
@@ -3075,10 +3146,10 @@ class system():
     def printProgress(self):
         if self.RANK == 0:
             if self.CONFIG.configExists('CONSERVE_COORDINATION'):
-                #self.CONFIG.STDOUT.write(f'FRAMES ANALYZED: {self.STEP}    CLUSTERS EXTRACTED: {self.TOTAL_CLUSTERS_WRITTEN}/{self.TOTAL_CLUSTERS_TO_EXTRACT}, {self.TOTAL_REACTANTS_TO_WRITE_FOUND-self.TOTAL_CLUSTERS_WRITTEN} failed: {self.EXTRACT_FAIL_STATS['TOTAL_WRITE_FAILED_OVER_EXTRACT_FREQ']}/{self.EXTRACT_FAIL_STATS['TOTAL_WRITE_FAILED_INNER_NONCONSERVE']}/{self.EXTRACT_FAIL_STATS['TOTAL_WRITE_FAILED_FIRSTOUTER_NONCONSERVE']}/{self.EXTRACT_FAIL_STATS['TOTAL_WRITE_FAILED_FIRSTOUTER_NONSOLVENT']}/{self.EXTRACT_FAIL_STATS['TOTAL_WRITE_FAILED_SECONDOUTER_UNDERCOORD']}    PROCESSING RATE: {self.PROCESSING_RATE} ns/day    PEAK MEMORY USE: {self.PEAK_MEMORY_USE} GB\n')
-                self.CONFIG.STDOUT.write(f"FRAME: {self.STEP} (0 indexed)    EXTRACTED: {self.TOTAL_CLUSTERS_WRITTEN}/{self.TOTAL_CLUSTERS_TO_EXTRACT}, {self.TOTAL_REACTANTS_TO_WRITE_FOUND-self.TOTAL_CLUSTERS_WRITTEN} failed: {self.EXTRACT_FAIL_STATS['TOTAL_WRITE_FAILED_INNER_NONCONSERVE']}/{self.EXTRACT_FAIL_STATS['TOTAL_WRITE_FAILED_FIRSTOUTER_NONCONSERVE']}/{self.EXTRACT_FAIL_STATS['TOTAL_WRITE_FAILED_SECONDOUTER_UNDERCOORD']}    RATE: {self.PROCESSING_RATE} ns/day    PEAK MEM: {self.PEAK_MEMORY_USE} GB\n")
+                #self.CONFIG.STDOUT.write(f'FRAMES ANALYZED: {self.STEP}    CLUSTERS EXTRACTED: {self.TOTAL_CLUSTERS_WRITTEN}/{self.TOTAL_CLUSTERS_TO_EXTRACT}, {self.TOTAL_REACTANTS_TO_WRITE_FOUND-self.TOTAL_CLUSTERS_WRITTEN} failed: {self.EXTRACT_DROP_STATS['TOTAL_WRITE_FAILED_OVER_EXTRACT_FREQ']}/{self.EXTRACT_DROP_STATS['TOTAL_WRITE_FAILED_INNER_NONCONSERVE']}/{self.EXTRACT_DROP_STATS['TOTAL_WRITE_FAILED_FIRSTOUTER_NONCONSERVE']}/{self.EXTRACT_DROP_STATS['TOTAL_WRITE_FAILED_FIRSTOUTER_NONSOLVENT']}/{self.EXTRACT_DROP_STATS['TOTAL_WRITE_FAILED_SECONDOUTER_UNDERCOORD']}    PROCESSING RATE: {self.PROCESSING_RATE} ns/day    PEAK MEMORY USE: {self.PEAK_MEMORY_USE} GB\n')
+                self.CONFIG.STDOUT.write(f"FRAME: {self.STEP} (0 indexed)    CLUSTERS EXTRACTED: {self.TOTAL_CLUSTERS_WRITTEN}/{self.TOTAL_CLUSTERS_TO_EXTRACT}    RATE: {self.PROCESSING_RATE} ns/day    PEAK MEM: {self.PEAK_MEMORY_USE} GB\n")
             else:
-                self.CONFIG.STDOUT.write(f"FRAMES ANALYZED: {self.STEP} (0 indexed)    CLUSTERS EXTRACTED: {self.TOTAL_CLUSTERS_WRITTEN}/{self.TOTAL_CLUSTERS_TO_EXTRACT}, {self.TOTAL_REACTANTS_TO_WRITE_FOUND-self.TOTAL_CLUSTERS_WRITTEN} failed: {self.EXTRACT_FAIL_STATS['TOTAL_WRITE_FAILED_OVER_EXTRACT_FREQ']}/{self.EXTRACT_FAIL_STATS['TOTAL_WRITE_FAILED_INNER_EXCLUDE_RES']}    PROCESSING RATE: {self.PROCESSING_RATE} ns/day    PEAK MEMORY USE: {self.PEAK_MEMORY_USE} GB\n")
+                self.CONFIG.STDOUT.write(f"FRAME: {self.STEP} (0 indexed)    CLUSTERS EXTRACTED: {self.TOTAL_CLUSTERS_WRITTEN}/{self.TOTAL_CLUSTERS_TO_EXTRACT}    RATE: {self.PROCESSING_RATE} ns/day    PEAK MEM: {self.PEAK_MEMORY_USE} GB\n")
 
     def run(self):
 
@@ -3095,10 +3166,13 @@ class system():
 
             self.reactantClustersWrapper()
             self.reactantGraph()
-            if self.CONFIG.config['CREATE_RXN_GRAPH'] and (self.STEP * self.CONFIG.config['DUMP_FREQ'] % self.GRAPH_WRITE_TIMESTEP) == 0 and self.STEP != self.START_FRAME:
-                self.writeRxnNetwork()
             self.extractReactantClusters()
             self.gatherClusterExtractionStats()
+            if (self.STEP * self.CONFIG.config['DUMP_FREQ'] % self.GRAPH_WRITE_TIMESTEP) == 0 and self.STEP != self.START_FRAME:
+                if self.CONFIG.config['CREATE_RXN_GRAPH']:
+                    self.writeRxnNetwork()
+                if self.CONFIG.configExists('CLUSTERS_TO_EXTRACT') and self.CONFIG.config['CLUSTERS_TO_EXTRACT'] > 0:
+                    self.writeExtractionStatistics()
             self.calculateProcessingRate()
             self.calculateAllProcPeakMemUse()
             self.resetReactantSolvationShells()
@@ -3149,6 +3223,9 @@ class system():
 
         if self.CONFIG.config['CREATE_RXN_GRAPH']:
             self.writeRxnNetwork()
+
+        if self.CONFIG.configExists('CLUSTERS_TO_EXTRACT') and self.CONFIG.config['CLUSTERS_TO_EXTRACT'] > 0:
+            self.writeExtractionStatistics()
         
         #self.outputCheck() #temporary
         
@@ -4170,7 +4247,7 @@ class rxnGraph():
     def coordinationNumber(self):
         total_node_weights = sum([node.weight for node in self.NODES])
 
-        shell_len = len(self.NODES[0].shells)
+        shell_len = len(self.NODES[0].NON_COARSENED_RESIDUES) #fix - there's a better way to do this
 
         coord_numbers = [{} for shell in range(shell_len)]
         for node in self.NODES:
@@ -4189,16 +4266,22 @@ class rxnGraph():
         #1st order = p(RL)/p(R)
         #2nd order = p(RLL)/p(RL)
 
-        residue_ratios = {}
+        residue_ratios = {res:[0] for res in self.NODES[0].NON_COARSENED_RESIDUES} #fix - there's a better way to do this
+        denominator = 0
 
         for node in self.NODES:
-            for res,count in node.shells[0].items(): #Explore only 1st shell binding
-                if res not in residue_ratios:
-                    residue_ratios[res] = []
+            bound_ligands = {(res,count) for res,count in node.shells[0].items() if count>0} #Explore only 1st shell binding
+            if len(bound_ligands) == 1:
+                res,count = bound_ligands.pop()
                 
                 residue_ratios[res].extend([0 for _ in range(count+1-len(residue_ratios[res]))])
                 
                 residue_ratios[res][count] += node.weight
+            elif len(bound_ligands) == 0:
+                denominator += node.weight
+
+        for ratios in residue_ratios.values():
+            ratios[0] = denominator
 
         return {res: [residue_ratios[res][n] / residue_ratios[res][n-1] if residue_ratios[res][n] != 0 and residue_ratios[res][n-1] != 0 else 0 for n in range(1, len(ratios))] if len(ratios) > 1 else None for res, ratios in residue_ratios.items()}
 
@@ -4336,6 +4419,7 @@ class configuration():
         else:
             raise configurationError('Command line input file not found')
 
+        self.OUTPUTPATH = None
         self.STDOUT = None #Write location for standard output
         self.STDERR = None #Write location for standard output
         self.METAOUT = None #Write location for performance analytics
@@ -4697,31 +4781,32 @@ class configuration():
         self.CONFIGOUT.flush()
 
     def outputType(self,graph_analysis=None):
-        path = []
+        self.OUTPUTPATH = []
         if self.configExists('WRITE_DIRECTORY'):
-            path.append(self.config['WRITE_DIRECTORY'])
+            self.OUTPUTPATH.append(self.config['WRITE_DIRECTORY'])
         if self.configExists('RUN_NAME'):
-            path.append(self.config['RUN_NAME'])
-        path = os.path.join('',*path)
-        if self.RANK == 0 and path:
-            os.makedirs(path, exist_ok=True)
+            self.OUTPUTPATH.append(self.config['RUN_NAME'])
+        self.OUTPUTPATH = os.path.join('',*self.OUTPUTPATH)
+        if self.RANK == 0 and self.OUTPUTPATH:
+            os.makedirs(self.OUTPUTPATH, exist_ok=True)
         self.COMM.Barrier()
-
-        if "SLURM_JOB_ID" in os.environ and graph_analysis is None:
-            if self.RANK == 0:
-                self.STDOUT = open(os.path.join(path,'out'),'w')
-                self.STDERR = open(os.path.join(path,'err'),'w')
-                self.METAOUT = open(os.path.join(path,'meta'),'w')
-                self.CONFIGOUT = open(os.path.join(path,'config_'),'w')
-                self.STDOUT.write(f'SLURM JOD ID: {os.environ["SLURM_JOB_ID"]}')
-                self.writeFullInput()
-            self.COMM.Barrier()
-            return
 
         self.STDOUT = sys.stdout
         self.STDERR = sys.stderr
-        if graph_analysis is None:
-            self.CONFIGOUT = open(os.path.join(path,'config_'),'w')
+        if graph_analysis is not None:
+            return
+        if self.configExists('CLUSTERS_TO_EXTRACT') and self.config['CLUSTERS_TO_EXTRACT'] > 0:
+            self.METAOUT = open(os.path.join(self.OUTPUTPATH,'cluster_meta.md'),'w')
+
+        if "SLURM_JOB_ID" in os.environ and self.RANK == 0:
+            self.STDOUT = open(os.path.join(self.OUTPUTPATH,'out'),'w')
+            self.STDERR = open(os.path.join(self.OUTPUTPATH,'err'),'w')
+            self.STDOUT.write(f'SLURM JOD ID: {os.environ["SLURM_JOB_ID"]}')
+
+        if self.RANK == 0:
+            self.CONFIGOUT = open(os.path.join(self.OUTPUTPATH,'config_'),'w')
+            self.writeFullInput()
+        self.COMM.Barrier()
 
     def profile(self,on=0):
 
@@ -4744,6 +4829,16 @@ class configuration():
             # Print the captured output
             if self.RANK == 0:
                 self.STDOUT.write(s.getvalue(),flush=True)
+
+    def overwrite(self,output_type,string):
+        match output_type:
+            case 'meta':
+                self.METAOUT = open(os.path.join(self.OUTPUTPATH,'cluster_meta.md'),'w')
+                self.METAOUT.write(string)
+            case 'graph':
+                pass
+            case _:
+                raise configurationError(f'Error writing output: {string}')
 
 def main():
     COMM = MPI.COMM_WORLD

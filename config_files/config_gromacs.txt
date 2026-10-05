@@ -38,14 +38,14 @@ PAIR_CUTOFFS = {
 CREATE_RXN_GRAPH = True
 WRITE_DIRECTORY = GROMACS                   #Master directory for all sub-runs
 RUN_NAME = uranyl                           #Sub-directory for analysis and extraction output
-OUTPUT_TYPE = QCHEM_NDX                           #File type to write extracted clusters to, options: 'XYZ'- generic structure file, 'QCHEM'- QCHEM compatable input file, 'GRO'- gromacs structure file, for multiple file outputs seperate keywords with '_' e.g., 'GRO_XYZ' 
-CLUSTERS_TO_EXTRACT = 0                     #Number of clusters to write to file from data file or trajectory (seperate)
-REACTANT_TO_PRINT = None#[{NIT:1},{NIT:1}]      #Reactant solvation shell composition to extract, syntax = [{shell_1_residue:shell_1_residue_number,...},{shell_2_residue:shell_2_residue_number,...},...] ex. [{H2O:4,NIT:1},{H2O:12,NIT:1}]
-CONSERVE_COORDINATION = None#{UYL:{SOL:36}, NIT:None}              #Residue(s) and number(s) to conserve for each specie, syntax = {specie_residue_1:{conserved_residue_1:conserved_residue_number_1,...},...} ex. {UYL:{H2O:30},NIT:None,TBP:None}
+OUTPUT_TYPE = GRO                           #File type to write extracted clusters to, options: 'XYZ'- generic structure file, 'QCHEM'- QCHEM compatable input file, 'GRO'- gromacs structure file, for multiple file outputs seperate keywords with '_' e.g., 'GRO_XYZ' 
+CLUSTERS_TO_EXTRACT = 3                     #Number of clusters to write to file from data file or trajectory (seperate)
+REACTANT_TO_PRINT = [{NIT:1},{NIT:1}]      #Reactant solvation shell composition to extract, syntax = [{shell_1_residue:shell_1_residue_number,...},{shell_2_residue:shell_2_residue_number,...},...] ex. [{H2O:4,NIT:1},{H2O:12,NIT:1}]
+CONSERVE_COORDINATION = {UYL:{SOL:36}, NIT:None}              #Residue(s) and number(s) to conserve for each specie, syntax = {specie_residue_1:{conserved_residue_1:conserved_residue_number_1,...},...} ex. {UYL:{H2O:30},NIT:None,TBP:None}
 COARSEN_SOLVENT_RESIDUES = [SOL,HEXA]                                    #Residues to corsen when building reaction graph. Will not trace coordination changes from these species, instead storing a range 
-EXCLUDE_SOLVENT_RESIDUES = None#[HEXA]
+#EXCLUDE_SOLVENT_RESIDUES = [HEXA]
 
-FILTER_REACTANTS_BY_Z = (55,70)#(55,70,115,130)     #Z bounds within which reactants must be to be filtered for extraction or reaction graph, must be in angstroms. Multiple bounds may be used. syntax = (z_lower_bound_1, z_upper_bound_1) or (z_lower_bound_1, z_upper_bound_1,z_lower_bound_2, z_upper_bound_2,...) where z_lower_bound_1 < z_upper_bound_1 < z_lower_bound_2 < z_upper_bound_2
+FILTER_REACTANTS_BY_Z = None#(55,70)#(55,70,115,130)     #Z bounds within which reactants must be to be filtered for extraction or reaction graph, must be in angstroms. Multiple bounds may be used. syntax = (z_lower_bound_1, z_upper_bound_1) or (z_lower_bound_1, z_upper_bound_1,z_lower_bound_2, z_upper_bound_2,...) where z_lower_bound_1 < z_upper_bound_1 < z_lower_bound_2 < z_upper_bound_2
 HBOND_TARGET = None#37.5
 HBOND_DEV = None#1
 SPECTATOR_TARGET = None#{Li:1.2,NIT:3.2}
